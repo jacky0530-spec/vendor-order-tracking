@@ -73,7 +73,7 @@
 
     <div id="tab-report" class="tab-panel hidden">
       <div class="card section-card">
-        <div class="section-head"><div><h2>廠商即時概況</h2><p class="muted">未出貨、逾期、準時率與平均延遲。</p></div></div>
+        <div class="section-head"><div><h2>廠商即時概況</h2><p class="muted">未出貨、逾期、出貨箱數、準時率與平均延遲。</p></div></div>
         <div class="table-wrap"><table><thead><tr><th>廠商</th><th>全部</th><th>未出貨</th><th>逾期</th><th>3天內到期</th><th>已出貨</th><th>準時率</th><th>平均延遲</th></tr></thead><tbody id="vendorReportRows"></tbody></table></div>
       </div>
       <div class="card section-card">
@@ -110,7 +110,7 @@
 
     <div id="tab-review" class="tab-panel hidden">
       <div class="card section-card">
-        <div class="section-head"><div><h2>LINE 解析異常</h2><p class="muted">未辨識出貨方、商品或其他需人工確認的原始訊息。</p></div><button id="reloadReviewBtn" class="btn ghost">重新整理</button></div>
+        <div class="section-head"><div><h2>LINE 解析異常</h2><p class="muted">未辨識商品或其他真正需要人工確認的原始訊息。</p></div><button id="reloadReviewBtn" class="btn ghost">重新整理</button></div>
         <div id="reviewList"></div>
       </div>
     </div>
@@ -118,7 +118,7 @@
 
   <section id="vendorView" class="hidden">
     <div class="card section-card">
-      <div class="section-head"><div><h2 id="vendorTitle">我的訂單</h2><p class="muted">請回填預計出貨日；出貨後填寫實際出貨日、物流與單號。</p></div><button id="vendorReloadBtn" class="btn ghost">重新整理</button></div>
+      <div class="section-head"><div><h2 id="vendorTitle">我的訂單</h2><p class="muted">請回填預計出貨日；出貨後填寫實際出貨日、出貨箱數、物流與單號。</p></div><button id="vendorReloadBtn" class="btn ghost">重新整理</button></div>
       <div id="passwordNotice" class="notice warning hidden">這是初始密碼登入，請先設定自己的新密碼。 <button id="showPasswordBtn" class="btn small secondary">修改密碼</button></div>
       <div id="passwordPanel" class="card inner-card hidden">
         <label>新密碼<input id="newPassword" type="password" placeholder="至少 8 碼"></label>
@@ -131,7 +131,7 @@
   </section>
 </main>
 
-<footer>Vendor Order Tracking V1.6</footer>
+<footer>Vendor Order Tracking V1.7</footer>
 <script src="./config.js?v=1"></script>
 <script src="./app.js?v=1"></script>
 <script src="./ui-patch.js?v=3"></script>
@@ -139,6 +139,7 @@
 <script src="./bulk-vendors.js?v=1"></script>
 <script src="./bulk-delete.js?v=3"></script>
 <script src="./recycle-bin.js?v=1"></script>
+<script src="./shipping-boxes.js?v=1"></script>
 <script src="./responsive.js?v=1"></script>
 </body>
 </html>
