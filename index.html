@@ -22,8 +22,8 @@
 <main class="container">
   <section id="loginView" class="login-card card">
     <h1>系統登入</h1>
-    <p class="muted">管理員使用 ADMIN；廠商使用 V0001、V0002…；員工使用 ADMIN 建立的帳號。</p>
-    <label>帳號<input id="loginName" autocomplete="username" placeholder="ADMIN、V0001 或員工帳號"></label>
+    <p class="muted">管理員使用 ADMIN；員工使用自訂帳號；廠商使用 V0001、V0002…</p>
+    <label>帳號<input id="loginName" autocomplete="username" placeholder="ADMIN、STAFF01 或 V0001"></label>
     <label>密碼<input id="loginPassword" type="password" autocomplete="current-password"></label>
     <button id="loginBtn" class="btn primary wide">登入</button>
     <div id="loginMsg" class="message"></div>
@@ -119,7 +119,7 @@
   <section id="vendorView" class="hidden">
     <div class="card section-card">
       <div class="section-head"><div><h2 id="vendorTitle">我的訂單</h2><p class="muted">請回填預計出貨日；出貨後填寫實際出貨日、物流與單號。</p></div><button id="vendorReloadBtn" class="btn ghost">重新整理</button></div>
-      <div id="passwordNotice" class="notice warning hidden">這是初始密碼登入，必須設定自己的新密碼。 <button id="showPasswordBtn" class="btn small secondary">修改密碼</button></div>
+      <div id="passwordNotice" class="notice warning hidden">這是初始密碼登入，請先設定自己的新密碼。 <button id="showPasswordBtn" class="btn small secondary">修改密碼</button></div>
       <div id="passwordPanel" class="card inner-card hidden">
         <label>新密碼<input id="newPassword" type="password" placeholder="至少 8 碼"></label>
         <label>再次輸入<input id="newPassword2" type="password"></label>
