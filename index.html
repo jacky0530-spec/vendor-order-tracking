@@ -43,6 +43,7 @@
       <button class="tab active" data-tab="tracking">訂單追蹤</button>
       <button class="tab" data-tab="report">廠商報表</button>
       <button class="tab" data-tab="vendors">廠商設定</button>
+      <button class="tab" data-tab="history">匯入歷史</button>
       <button class="tab" data-tab="review">LINE 異常</button>
     </nav>
 
@@ -54,7 +55,7 @@
         <div class="metric card good"><span>已出貨／完成</span><strong id="metricDone">0</strong></div>
       </div>
       <div class="card section-card">
-        <div class="section-head"><div><h2>訂單追蹤</h2><p class="muted">依有效出貨日排序，逾期優先。</p></div><button id="reloadBtn" class="btn ghost">重新整理</button></div>
+        <div class="section-head"><div><h2>訂單追蹤</h2><p class="muted">逾期與即將到期優先；其他訂單依訂購日期由新到舊。</p></div><button id="reloadBtn" class="btn ghost">重新整理</button></div>
         <div class="filters">
           <input id="searchInput" placeholder="搜尋訂單、商品、廠商、收貨人">
           <select id="vendorFilter"><option value="">全部廠商</option></select>
@@ -89,6 +90,24 @@
       </div>
     </div>
 
+    <div id="tab-history" class="tab-panel hidden">
+      <div class="card section-card">
+        <div class="section-head"><div><h2>LINE 匯入歷史</h2><p class="muted">每次 LINE 收到的訂單訊息都保留紀錄；機器人不再回覆群組。</p></div><button id="reloadHistoryBtn" class="btn ghost">重新整理</button></div>
+        <div class="filters">
+          <input id="historySearch" placeholder="搜尋訂單、廠商、原始 LINE 內容">
+          <select id="historyStatus">
+            <option value="">全部狀態</option>
+            <option value="parsed">成功匯入</option>
+            <option value="needs_review">需人工確認</option>
+            <option value="ignored">已忽略</option>
+            <option value="error">錯誤</option>
+          </select>
+        </div>
+        <div id="historySummary" class="muted" style="margin:10px 0"></div>
+        <div class="table-wrap"><table><thead><tr><th>匯入時間</th><th>結果</th><th>訂單</th><th>廠商</th><th>原始 LINE 訊息</th></tr></thead><tbody id="historyRows"><tr><td colspan="5" class="muted">點選「匯入歷史」後載入。</td></tr></tbody></table></div>
+      </div>
+    </div>
+
     <div id="tab-review" class="tab-panel hidden">
       <div class="card section-card">
         <div class="section-head"><div><h2>LINE 解析異常</h2><p class="muted">未辨識出貨方、商品或其他需人工確認的原始訊息。</p></div><button id="reloadReviewBtn" class="btn ghost">重新整理</button></div>
@@ -112,8 +131,9 @@
   </section>
 </main>
 
-<footer>Vendor Order Tracking V1.0</footer>
+<footer>Vendor Order Tracking V1.1</footer>
 <script src="./config.js?v=1"></script>
 <script src="./app.js?v=1"></script>
+<script src="./ui-patch.js?v=2"></script>
 </body>
 </html>
