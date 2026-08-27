@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="color-scheme" content="light">
+  <title>廠商訂單追蹤系統</title>
+  <link rel="stylesheet" href="./styles.css?v=1">
+</head>
+<body>
+<header class="topbar">
+  <div>
+    <div class="brand">廠商訂單追蹤系統</div>
+    <div class="subtitle">LINE 訂單・交期・廠商出貨追蹤</div>
+  </div>
+  <div class="top-actions">
+    <span id="identity" class="identity"></span>
+    <button id="logoutBtn" class="btn ghost hidden">登出</button>
+  </div>
+</header>
+
+<main class="container">
+  <section id="loginView" class="login-card card">
+    <h1>系統登入</h1>
+    <p class="muted">管理員使用 ADMIN；廠商使用 V0001、V0002…</p>
+    <label>帳號<input id="loginName" autocomplete="username" placeholder="ADMIN 或 V0001"></label>
+    <label>密碼<input id="loginPassword" type="password" autocomplete="current-password"></label>
+    <button id="loginBtn" class="btn primary wide">登入</button>
+    <div id="loginMsg" class="message"></div>
+
+    <details class="setup-box">
+      <summary>首次建立管理員</summary>
+      <p class="muted">只使用一次。建立成功後初始化功能會自動關閉。</p>
+      <label>首次設定碼<input id="setupCode" autocomplete="off"></label>
+      <label>管理員密碼<input id="setupPassword" type="password" autocomplete="new-password" placeholder="至少 8 碼"></label>
+      <button id="setupBtn" class="btn secondary wide">建立 ADMIN</button>
+      <div id="setupMsg" class="message"></div>
+    </details>
+  </section>
+
+  <section id="adminView" class="hidden">
+    <nav class="tabs">
+      <button class="tab active" data-tab="tracking">訂單追蹤</button>
+      <button class="tab" data-tab="report">廠商報表</button>
+      <button class="tab" data-tab="vendors">廠商設定</button>
+      <button class="tab" data-tab="review">LINE 異常</button>
+    </nav>
+
+    <div id="tab-tracking" class="tab-panel">
+      <div class="metrics">
+        <div class="metric card"><span>未完成</span><strong id="metricOpen">0</strong></div>
+        <div class="metric card warn"><span>3 天內到期</span><strong id="metricSoon">0</strong></div>
+        <div class="metric card danger"><span>已逾期</span><strong id="metricLate">0</strong></div>
+        <div class="metric card good"><span>已出貨／完成</span><strong id="metricDone">0</strong></div>
+      </div>
+      <div class="card section-card">
+        <div class="section-head"><div><h2>訂單追蹤</h2><p class="muted">依有效出貨日排序，逾期優先。</p></div><button id="reloadBtn" class="btn ghost">重新整理</button></div>
+        <div class="filters">
+          <input id="searchInput" placeholder="搜尋訂單、商品、廠商、收貨人">
+          <select id="vendorFilter"><option value="">全部廠商</option></select>
+          <select id="alertFilter">
+            <option value="">全部警示</option>
+            <option value="overdue">已逾期</option>
+            <option value="due_soon">3 天內到期</option>
+            <option value="normal">正常</option>
+            <option value="completed">完成</option>
+          </select>
+        </div>
+        <div class="table-wrap"><table><thead><tr><th>警示</th><th>訂單</th><th>商品</th><th>廠商</th><th>收貨人</th><th>原交期</th><th>廠商回覆</th><th>狀態</th><th></th></tr></thead><tbody id="orderRows"></tbody></table></div>
+      </div>
+    </div>
+
+    <div id="tab-report" class="tab-panel hidden">
+      <div class="card section-card">
+        <div class="section-head"><div><h2>廠商即時概況</h2><p class="muted">未出貨、逾期、準時率與平均延遲。</p></div></div>
+        <div class="table-wrap"><table><thead><tr><th>廠商</th><th>全部</th><th>未出貨</th><th>逾期</th><th>3天內到期</th><th>已出貨</th><th>準時率</th><th>平均延遲</th></tr></thead><tbody id="vendorReportRows"></tbody></table></div>
+      </div>
+      <div class="card section-card">
+        <h2>每月出貨統計</h2>
+        <div class="table-wrap"><table><thead><tr><th>月份</th><th>廠商</th><th>訂單</th><th>已出貨</th><th>待出貨</th><th>準時</th><th>延遲</th><th>準時率</th></tr></thead><tbody id="monthlyReportRows"></tbody></table></div>
+      </div>
+    </div>
+
+    <div id="tab-vendors" class="tab-panel hidden">
+      <div class="card section-card">
+        <div class="section-head"><div><h2>廠商設定與帳號</h2><p class="muted">新出貨方會由 LINE 自動建立廠商；這裡設定預設交期並發放帳號。</p></div></div>
+        <div id="credentialBox"></div>
+        <div id="vendorCards" class="vendor-grid"></div>
+      </div>
+    </div>
+
+    <div id="tab-review" class="tab-panel hidden">
+      <div class="card section-card">
+        <div class="section-head"><div><h2>LINE 解析異常</h2><p class="muted">未辨識出貨方、商品或其他需人工確認的原始訊息。</p></div><button id="reloadReviewBtn" class="btn ghost">重新整理</button></div>
+        <div id="reviewList"></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="vendorView" class="hidden">
+    <div class="card section-card">
+      <div class="section-head"><div><h2 id="vendorTitle">我的訂單</h2><p class="muted">請回填預計出貨日；出貨後填寫實際出貨日、物流與單號。</p></div><button id="vendorReloadBtn" class="btn ghost">重新整理</button></div>
+      <div id="passwordNotice" class="notice warning hidden">這是臨時密碼登入，建議立即設定自己的新密碼。 <button id="showPasswordBtn" class="btn small secondary">修改密碼</button></div>
+      <div id="passwordPanel" class="card inner-card hidden">
+        <label>新密碼<input id="newPassword" type="password" placeholder="至少 8 碼"></label>
+        <label>再次輸入<input id="newPassword2" type="password"></label>
+        <button id="changePasswordBtn" class="btn primary">儲存新密碼</button>
+        <div id="passwordMsg" class="message"></div>
+      </div>
+      <div id="vendorOrders"></div>
+    </div>
+  </section>
+</main>
+
+<footer>Vendor Order Tracking V1.0</footer>
+<script src="./config.js?v=1"></script>
+<script src="./app.js?v=1"></script>
+</body>
+</html>
