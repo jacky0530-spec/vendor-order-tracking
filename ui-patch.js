@@ -13,14 +13,21 @@
     catch { return null; }
   }
 
-  async function api(path) {
+  async function api(path, options = {}) {
     const s = getSession();
     if (!s?.access_token) throw new Error('請重新登入');
     const res = await fetch(`${SB}/rest/v1/${path}`, {
-      headers: { apikey: KEY, Authorization: `Bearer ${s.access_token}` }
+      ...options,
+      headers: {
+        apikey: KEY,
+        Authorization: `Bearer ${s.access_token}`,
+        ...(options.headers || {})
+      }
     });
-    if (!res.ok) throw new Error(await res.text() || `HTTP ${res.status}`);
-    return res.json();
+    const text = await res.text();
+    if (!res.ok) throw new Error(text || `HTTP ${res.status}`);
+    if (!text) return null;
+    try { return JSON.parse(text); } catch { return text; }
   }
 
   function dateFromText(text) {
@@ -70,16 +77,107 @@
     delete body.dataset.sorting;
   }
 
-  function installOrderSorter() {
+  function hideShippedEnabled() {
+    const stored = localStorage.getItem('vendor_order_hide_shipped');
+    return stored == null ? true : stored === '1';
+  }
+
+  function rowIsShipped(row) {
+    const select = row.querySelector('select[id^="status-"]');
+    const status = select?.value || '';
+    const completedBadge = row.querySelector('td:first-child .badge.completed');
+    return status === 'shipped' || status === 'completed' || Boolean(completedBadge);
+  }
+
+  function applyShippedVisibility() {
+    const body = $('orderRows');
+    if (!body) return;
+    const hide = $('hideShippedToggle')?.checked ?? hideShippedEnabled();
+    body.querySelectorAll('tr').forEach((row) => {
+      if (row.cells.length < 2) return;
+      row.classList.toggle('shipped-hidden', hide && rowIsShipped(row));
+    });
+  }
+
+  async function deleteOrder(orderId, row) {
+    const orderNo = (row?.cells?.[1]?.innerText || '此訂單').split('\n')[0].trim();
+    const first = confirm(`確定要刪除 ${orderNo}？\n\n商品明細與廠商出貨回覆會一併刪除。`);
+    if (!first) return;
+    const second = confirm(`再次確認：永久刪除 ${orderNo}？\n此動作無法復原。`);
+    if (!second) return;
+
+    const btn = row?.querySelector(`[data-delete-order="${orderId}"]`);
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = '刪除中…';
+    }
+
+    try {
+      await api(`orders?id=eq.${encodeURIComponent(orderId)}`, {
+        method: 'DELETE',
+        headers: { Prefer: 'return=minimal' }
+      });
+      row?.remove();
+      alert(`${orderNo} 已刪除。\n原始 LINE 匯入紀錄仍保留，用來防止同一訊息再次重複建立。`);
+      if ($('reloadBtn')) $('reloadBtn').click();
+    } catch (e) {
+      alert(`刪除失敗：${e.message}`);
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = '刪除';
+      }
+    }
+  }
+
+  function enhanceOrderRows() {
+    const body = $('orderRows');
+    if (!body || body.dataset.enhancing === '1') return;
+    body.dataset.enhancing = '1';
+
+    body.querySelectorAll('tr').forEach((row) => {
+      const saveBtn = row.querySelector('[data-save-status]');
+      if (!saveBtn) return;
+      const orderId = saveBtn.dataset.saveStatus;
+      if (!orderId || row.querySelector('[data-delete-order]')) return;
+
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'btn small delete-btn';
+      del.dataset.deleteOrder = orderId;
+      del.textContent = '刪除';
+      del.addEventListener('click', () => deleteOrder(orderId, row));
+      saveBtn.insertAdjacentElement('afterend', del);
+    });
+
+    applyShippedVisibility();
+    sortOrderRows();
+    delete body.dataset.enhancing;
+  }
+
+  function installTrackingControls() {
+    const filters = document.querySelector('#tab-tracking .filters');
+    if (filters && !$('hideShippedToggle')) {
+      const label = document.createElement('label');
+      label.className = 'filter-toggle';
+      label.innerHTML = `<input id="hideShippedToggle" type="checkbox"> <span>隱藏已出貨／完成</span>`;
+      filters.appendChild(label);
+      const toggle = $('hideShippedToggle');
+      toggle.checked = hideShippedEnabled();
+      toggle.addEventListener('change', () => {
+        localStorage.setItem('vendor_order_hide_shipped', toggle.checked ? '1' : '0');
+        applyShippedVisibility();
+      });
+    }
+
     const body = $('orderRows');
     if (!body) return;
     let timer;
     const observer = new MutationObserver(() => {
       clearTimeout(timer);
-      timer = setTimeout(sortOrderRows, 30);
+      timer = setTimeout(enhanceOrderRows, 30);
     });
     observer.observe(body, { childList: true, subtree: true });
-    setTimeout(sortOrderRows, 100);
+    setTimeout(enhanceOrderRows, 100);
   }
 
   function statusBadge(status) {
@@ -166,7 +264,7 @@
   }
 
   window.addEventListener('DOMContentLoaded', () => {
-    installOrderSorter();
+    installTrackingControls();
     installHistoryTab();
   });
 })();
