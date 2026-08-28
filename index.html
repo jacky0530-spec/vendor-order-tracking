@@ -55,7 +55,7 @@
         <div class="metric card good"><span>已出貨／完成</span><strong id="metricDone">0</strong></div>
       </div>
       <div class="card section-card">
-        <div class="section-head"><div><h2>訂單追蹤</h2><p class="muted">逾期與即將到期優先；其他訂單依訂購日期由新到舊。</p></div><button id="reloadBtn" class="btn ghost">重新整理</button></div>
+        <div class="section-head"><div><h2>訂單追蹤</h2><p class="muted">已逾期與 3 天內到期固定置頂；其他訂單依訂單編號排序，可切換小到大或大到小。</p></div><button id="reloadBtn" class="btn ghost">重新整理</button></div>
         <div class="filters">
           <input id="searchInput" placeholder="搜尋訂單、商品、廠商、收貨人">
           <select id="vendorFilter"><option value="">全部廠商</option></select>
@@ -67,7 +67,7 @@
             <option value="completed">完成</option>
           </select>
         </div>
-        <div class="table-wrap"><table><thead><tr><th>警示</th><th>訂單</th><th>商品</th><th>廠商</th><th>收貨人</th><th>原交期</th><th>廠商回覆</th><th>狀態</th><th></th></tr></thead><tbody id="orderRows"></tbody></table></div>
+        <div class="table-wrap"><table><thead><tr><th>警示</th><th>訂單</th><th>商品編號／商品名稱</th><th>廠商編號／廠商名稱</th><th>收貨人</th><th>原交期</th><th>廠商回覆</th><th>狀態</th><th></th></tr></thead><tbody id="orderRows"></tbody></table></div>
       </div>
     </div>
 
@@ -131,7 +131,7 @@
   </section>
 </main>
 
-<footer>Vendor Order Tracking V1.8</footer>
+<footer>Vendor Order Tracking V1.9</footer>
 <script src="./config.js?v=1"></script>
 <script src="./app.js?v=1"></script>
 <script src="./ui-patch.js?v=3"></script>
@@ -141,6 +141,7 @@
 <script src="./recycle-bin.js?v=1"></script>
 <script src="./shipping-boxes.js?v=1"></script>
 <script src="./column-clarity.js?v=1"></script>
+<script src="./order-sort.js?v=1"></script>
 <script src="./responsive.js?v=1"></script>
 </body>
 </html>
