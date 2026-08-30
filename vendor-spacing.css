@@ -1,0 +1,63 @@
+/* V2.5 - vendor batch shipping spacing */
+.cross-ship-panel .cross-required {
+  column-gap: 28px !important;
+  row-gap: 20px !important;
+  margin-top: 22px !important;
+  margin-bottom: 22px !important;
+}
+
+.cross-ship-panel .cross-optional {
+  column-gap: 24px !important;
+  row-gap: 18px !important;
+  margin-top: 20px !important;
+}
+
+.cross-ship-panel .cross-required > label,
+.cross-ship-panel .cross-optional > label {
+  display: block;
+  min-width: 0;
+}
+
+.cross-ship-panel .cross-required input,
+.cross-ship-panel .cross-optional input,
+.cross-ship-panel textarea {
+  box-sizing: border-box;
+  margin-top: 9px !important;
+}
+
+.cross-ship-panel .cross-required input {
+  min-height: 52px;
+  padding-left: 14px;
+  padding-right: 14px;
+}
+
+.cross-ship-panel .cross-optional input {
+  min-height: 50px;
+}
+
+.cross-ship-panel > label[style*="margin-top"] {
+  margin-top: 22px !important;
+}
+
+@media (min-width: 761px) and (max-width: 1100px) {
+  .cross-ship-panel {
+    width: min(900px, 96vw) !important;
+  }
+  .cross-ship-panel .cross-required {
+    gap: 22px !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .cross-ship-panel .cross-required,
+  .cross-ship-panel .cross-optional {
+    grid-template-columns: 1fr !important;
+    gap: 18px !important;
+    margin-top: 18px !important;
+    margin-bottom: 18px !important;
+  }
+  .cross-ship-panel .cross-required input,
+  .cross-ship-panel .cross-optional input {
+    min-height: 52px;
+  }
+}
