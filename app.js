@@ -292,68 +292,50 @@
         rest('vendor_shipping_summary?select=*&order=vendor_code.asc'),
         rest('monthly_shipping_summary?select=*&order=month.desc,vendor_code.asc')
       ]);
-      $('vendorReportRows').innerHTML = (summary || []).map((x) => `<tr>
-        <td><b>${esc(x.vendor_code)} ${esc(x.vendor_name)}</b></td><td>${Number(x.total_orders||0)}</td><td>${Number(x.open_orders||0)}</td>
-        <td class="${Number(x.overdue_orders)>0?'kpi-bad':''}">${Number(x.overdue_orders||0)}</td>
-        <td class="${Number(x.due_soon_orders)>0?'kpi-warn':''}">${Number(x.due_soon_orders||0)}</td>
-        <td>${Number(x.shipped_orders||0)}</td><td class="${Number(x.on_time_rate)>=90?'kpi-good':''}">${x.on_time_rate==null?'—':`${x.on_time_rate}%`}</td>
-        <td>${x.avg_delay_days==null?'—':`${x.avg_delay_days} 天`}</td></tr>`).join('') || '<tr><td colspan="8">尚無資料</td></tr>';
-      $('monthlyReportRows').innerHTML = (monthly || []).map((x) => `<tr>
-        <td>${esc(x.month)}</td><td>${esc(x.vendor_code)} ${esc(x.vendor_name)}</td><td>${Number(x.orders||0)}</td><td>${Number(x.shipped||0)}</td>
-        <td>${Number(x.pending||0)}</td><td>${Number(x.on_time||0)}</td><td class="${Number(x.late)>0?'kpi-bad':''}">${Number(x.late||0)}</td>
-        <td>${x.on_time_rate==null?'—':`${x.on_time_rate}%`}</td></tr>`).join('') || '<tr><td colspan="8">尚無資料</td></tr>';
-    } catch (e) {
-      $('vendorReportRows').innerHTML = `<tr><td colspan="8" class="kpi-bad">報表載入失敗：${esc(e.message)}</td></tr>`;
-    }
+      $('vendorReportRows').innerHTML = (summary || []).map((r) => `<tr><td><b>${esc(r.vendor_code)}</b> ${esc(r.vendor_name)}</td><td>${r.total_orders}</td><td>${r.open_orders}</td><td>${r.overdue_orders}</td><td>${r.due_soon_orders}</td><td>${r.shipped_orders}</td><td>${r.on_time_rate == null ? '—' : `${r.on_time_rate}%`}</td><td>${r.avg_delay_days == null ? '—' : `${r.avg_delay_days} 天`}</td></tr>`).join('') || '<tr><td colspan="8" class="muted">尚無資料。</td></tr>';
+      $('monthlyReportRows').innerHTML = (monthly || []).map((r) => `<tr><td>${esc(r.month)}</td><td>${esc(r.vendor_code)} ${esc(r.vendor_name)}</td><td>${r.total_orders}</td><td>${r.shipped_orders}</td><td>${r.pending_orders}</td><td>${r.on_time_orders}</td><td>${r.delayed_orders}</td><td>${r.on_time_rate == null ? '—' : `${r.on_time_rate}%`}</td></tr>`).join('') || '<tr><td colspan="8" class="muted">尚無資料。</td></tr>';
+    } catch (e) { alert(`報表載入失敗：${e.message}`); }
   }
 
   async function loadReviewQueue() {
     try {
       const rows = await rest('line_review_queue?select=*&order=received_at.desc');
-      $('reviewList').innerHTML = (rows || []).map((x) => `<div class="review-item">
-        <div><b>${esc(x.parse_error || x.parse_status || '待確認')}</b> <span class="muted">${esc(x.received_at || '')}</span></div>
-        <pre>${esc(x.raw_text || '')}</pre>
-      </div>`).join('') || '<p class="muted">目前沒有需要人工確認的 LINE 訊息。</p>';
-    } catch (e) {
-      $('reviewList').innerHTML = `<p class="kpi-bad">異常清單載入失敗：${esc(e.message)}</p>`;
-    }
+      $('reviewList').innerHTML = (rows || []).map((r) => `<div class="review-card"><div><b>${esc(r.received_at)}</b> · ${esc(r.parse_error || '')}</div><pre>${esc(r.raw_text)}</pre></div>`).join('') || '<p class="muted">目前沒有待人工確認的 LINE 訊息。</p>';
+    } catch (e) { alert(`LINE 異常載入失敗：${e.message}`); }
   }
 
   async function loadVendor() {
-    try {
-      [orders, items] = await Promise.all([
-        rest('order_tracking_overview?select=*'),
-        rest('order_items?select=*&order=sort_order.asc')
-      ]);
-      $('vendorTitle').textContent = `${profile.display_name || profile.login_name}－我的訂單`;
-      if (profile.must_change_password) $('passwordNotice').classList.remove('hidden');
-      renderVendorOrders();
-    } catch (e) { alert(`訂單載入失敗：${e.message}`); }
-  }
-
-  function renderVendorOrders() {
-    const active = orders.filter((o) => !['completed','cancelled'].includes(o.status));
-    active.sort((a,b) => String(a.effective_due_date || '9999').localeCompare(String(b.effective_due_date || '9999')));
-    $('vendorOrders').innerHTML = active.map((o) => `
-      <div class="order-card">
-        <div class="order-head"><div><b>${esc(o.order_no)}</b> <span class="muted">訂購日 ${esc(o.order_date)}</span></div>${alertBadge(o.alert_level,o.overdue_days)}</div>
-        <div class="order-products">${productLines(o.id)}</div>
-        <p>收貨人：<b>${esc(o.receiver || '—')}</b>　原交期：${esc(fmt(o.expected_from))}${o.expected_deadline && o.expected_deadline!==o.expected_from?` ～ ${esc(o.expected_deadline)}`:''}</p>
+    if (!profile.vendor_id) throw new Error('此廠商帳號尚未綁定廠商');
+    const [vendorRows, ownOrders, ownItems, updates] = await Promise.all([
+      rest(`vendors?select=*&id=eq.${encodeURIComponent(profile.vendor_id)}`),
+      rest(`order_tracking_overview?select=*&vendor_id=eq.${encodeURIComponent(profile.vendor_id)}`),
+      rest(`order_items?select=*&order=sort_order.asc`),
+      rest(`vendor_updates?select=*&vendor_id=eq.${encodeURIComponent(profile.vendor_id)}`)
+    ]);
+    const vendor = vendorRows?.[0];
+    const updateMap = new Map((updates || []).map((x) => [x.order_id, x]));
+    $('vendorTitle').textContent = `${vendor?.vendor_code || ''} ${vendor?.name || ''}｜我的訂單`;
+    $('passwordNotice').classList.toggle('hidden', !profile.must_change_password);
+    const sorted = (ownOrders || []).sort((a,b) => String(a.effective_due_date || '9999').localeCompare(String(b.effective_due_date || '9999')));
+    $('vendorOrders').innerHTML = sorted.map((o) => {
+      const u = updateMap.get(o.id) || {};
+      const oi = (ownItems || []).filter((x) => x.order_id === o.id);
+      return `<div class="vendor-order ${o.alert_level === 'overdue' ? 'overdue-card' : ''}">
+        <div class="vendor-order-head"><div><h3>${esc(o.order_no)}</h3><span class="muted">訂購日 ${esc(o.order_date)}</span></div>${alertBadge(o.alert_level,o.overdue_days)}</div>
+        <div class="item-box">${oi.map((x) => `<div><b>${esc(x.product_code || '')}</b> ${esc(x.product_name || '')}${x.variant ? `｜${esc(x.variant)}` : ''}${x.quantity != null ? ` × ${esc(x.quantity)}${esc(x.quantity_unit || '')}` : ''}</div>`).join('')}</div>
+        <div class="vendor-meta">收貨人：<b>${esc(o.receiver || '—')}</b>　原交期：${esc(fmt(o.expected_deadline))}</div>
         <div class="form-grid">
-          <label>目前狀態<select id="v-status-${esc(o.id)}">
-            ${['confirmed','preparing','delayed','out_of_stock','shipped'].map((s)=>`<option value="${s}" ${o.vendor_status===s?'selected':''}>${statusText(s==='confirmed'?'vendor_confirmed':s)}</option>`).join('')}
-          </select></label>
-          <label>預計出貨日<input id="v-promised-${esc(o.id)}" type="date" value="${esc(o.promised_ship_date || '')}"></label>
-          <label>實際出貨日<input id="v-actual-${esc(o.id)}" type="date" value="${esc(o.actual_ship_date || '')}"></label>
+          <label>目前狀態<select id="v-status-${esc(o.id)}">${['confirmed','preparing','shipped','out_of_stock','delayed'].map((s) => `<option value="${s}" ${u.vendor_status===s?'selected':''}>${({confirmed:'廠商已確認',preparing:'備貨中',shipped:'已出貨',out_of_stock:'缺貨',delayed:'延後'})[s]}</option>`).join('')}</select></label>
+          <label>預計出貨日<input id="v-promised-${esc(o.id)}" type="date" value="${esc(u.promised_ship_date || '')}"></label>
+          <label>實際出貨日<input id="v-actual-${esc(o.id)}" type="date" value="${esc(u.actual_ship_date || '')}"></label>
+          <label>物流公司<input id="v-carrier-${esc(o.id)}" value="${esc(u.carrier || '')}" placeholder="黑貓／新竹物流…"></label>
+          <label>物流單號<input id="v-track-${esc(o.id)}" value="${esc(u.tracking_no || '')}"></label>
+          <label class="full">備註<textarea id="v-note-${esc(o.id)}">${esc(u.note || '')}</textarea></label>
         </div>
-        <div class="form-grid two">
-          <label>物流公司<input id="v-carrier-${esc(o.id)}" value="${esc(o.carrier || '')}" placeholder="黑貓／新竹物流…"></label>
-          <label>物流單號<input id="v-track-${esc(o.id)}" value="${esc(o.tracking_no || '')}"></label>
-        </div>
-        <label>備註<textarea id="v-note-${esc(o.id)}">${esc(o.vendor_note || '')}</textarea></label>
-        <button class="btn primary" data-vendor-save="${esc(o.id)}" data-vendor-id="${esc(o.vendor_id)}">儲存出貨回覆</button>
-      </div>`).join('') || '<p class="muted">目前沒有待處理訂單。</p>';
-    document.querySelectorAll('[data-vendor-save]').forEach((b) => b.addEventListener('click', () => saveVendorUpdate(b.dataset.vendorSave, b.dataset.vendorId)));
+        <button class="btn primary" data-vsave="${esc(o.id)}" data-vendor="${esc(profile.vendor_id)}">儲存出貨回覆</button>
+      </div>`;
+    }).join('') || '<p class="muted">目前沒有待處理訂單。</p>';
+    document.querySelectorAll('[data-vsave]').forEach((b) => b.addEventListener('click', () => saveVendorUpdate(b.dataset.vsave, b.dataset.vendor)));
   }
 
   async function saveVendorUpdate(orderId, vendorId) {
@@ -438,7 +420,10 @@
     $('searchInput').addEventListener('input', renderOrders);
     $('vendorFilter').addEventListener('change', renderOrders);
     $('alertFilter').addEventListener('change', renderOrders);
-    $('reloadBtn').addEventListener('click', loadAdmin);
+    // Keep the system refresh button identical to a browser page refresh.
+    // The authenticated session is stored in localStorage, so a full reload
+    // re-runs every UI enhancement module without logging the user out.
+    $('reloadBtn').addEventListener('click', () => location.reload());
     $('reloadReviewBtn').addEventListener('click', loadReviewQueue);
     $('vendorReloadBtn').addEventListener('click', loadVendor);
     $('showPasswordBtn').addEventListener('click', () => $('passwordPanel').classList.toggle('hidden'));
