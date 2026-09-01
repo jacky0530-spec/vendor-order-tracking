@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = 'V2.9';
+  const VERSION = 'V2.10';
   const $ = (id) => document.getElementById(id);
 
   function injectStyles(){
@@ -39,9 +39,9 @@
     return m?Number(m[1]):Number.MAX_SAFE_INTEGER;
   }
 
-  function extractDueDate(card){
+  function extractOrderDate(card){
     const text=card.textContent||'';
-    const m=text.match(/原交期\s*[：:]?\s*(20\d{2}-\d{2}-\d{2})/);
+    const m=text.match(/訂購日\s*[：:]?\s*(20\d{2}-\d{2}-\d{2})/);
     return m?m[1]:'9999-12-31';
   }
 
@@ -63,7 +63,9 @@
     cards.sort((a,b)=>{
       const pa=warningPriority(a),pb=warningPriority(b);
       if(pa!==pb) return pa-pb;
-      const da=extractDueDate(a),db=extractDueDate(b);
+
+      // 警示分類內與一般訂單皆先依訂購日由舊到新，再依單號小到大。
+      const da=extractOrderDate(a),db=extractOrderDate(b);
       const dc=da.localeCompare(db);
       if(dc) return dc;
       return extractOrderNo(a)-extractOrderNo(b);
