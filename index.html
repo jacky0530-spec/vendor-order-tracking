@@ -93,7 +93,7 @@
 
     <div id="tab-history" class="tab-panel hidden">
       <div class="card section-card">
-        <div class="section-head"><div><h2>LINE 匯入歷史</h2><p class="muted">每次 LINE 收到的訂單訊息都保留紀錄；機器人不再回覆群組。</p></div><button id="reloadHistoryBtn" class="btn ghost">重新整理</button></div>
+        <div class="section-head"><div><h2>LINE 匯入歷史</h2><p class="muted">每次 LINE 收到的訂單訊息都保留紀錄；訊息收回時，未出貨訂單會自動移至回收桶。</p></div><button id="reloadHistoryBtn" class="btn ghost">重新整理</button></div>
         <div class="filters">
           <input id="historySearch" placeholder="搜尋訂單、廠商、原始 LINE 內容">
           <select id="historyStatus">
@@ -132,7 +132,7 @@
   </section>
 </main>
 
-<footer>Vendor Order Tracking V2.10</footer>
+<footer>Vendor Order Tracking V2.11</footer>
 <script src="./config.js?v=1"></script>
 <script src="./app.js?v=2"></script>
 <script src="./ui-patch.js?v=3"></script>
@@ -150,6 +150,6 @@
 <script src="./reload-full.js?v=2"></script>
 <script src="./vendor-display-options.js?v=2"></script>
 <script src="./vendor-ui-compat.js?v=1"></script>
-<script src="./vendor-sort-admin-status.js?v=2"></script>
+<script src="./vendor-sort-admin-status.js?v=3"></script>
 </body>
 </html>
