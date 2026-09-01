@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = 'V2.10';
+  const VERSION = 'V2.11';
   const $ = (id) => document.getElementById(id);
 
   function injectStyles(){
@@ -63,8 +63,6 @@
     cards.sort((a,b)=>{
       const pa=warningPriority(a),pb=warningPriority(b);
       if(pa!==pb) return pa-pb;
-
-      // 警示分類內與一般訂單皆先依訂購日由舊到新，再依單號小到大。
       const da=extractOrderDate(a),db=extractOrderDate(b);
       const dc=da.localeCompare(db);
       if(dc) return dc;
