@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = 'V2.18';
+  const VERSION = 'V2.19';
   const CFG = window.APP_CONFIG || {};
   const SB = CFG.SUPABASE_URL;
   const KEY = CFG.SUPABASE_PUBLISHABLE_KEY;
@@ -55,7 +55,8 @@
   }
 
   function ensureStyle(){
-    if($('orderEditClickFixStyles')) return;
+    const old = $('orderEditClickFixStyles');
+    if(old) old.remove();
     const st = document.createElement('style');
     st.id = 'orderEditClickFixStyles';
     st.textContent = `
@@ -67,16 +68,36 @@
       .fix-item-editor{border:1px solid #d0d5dd;background:#f9fafb;border-radius:14px;padding:14px;margin:10px 0}.fix-item-grid{display:grid;grid-template-columns:1.1fr 2fr .7fr .7fr 1fr;gap:10px}
       .fix-edit-actions{position:sticky;bottom:-20px;background:#fff;display:flex;justify-content:flex-end;gap:10px;padding:14px 0 4px;margin-top:16px}
 
-      /* 管理/員工訂單追蹤：上半部固定，只有訂單清單內部捲動 */
+      /* V2.19：固定但壓縮上方操作區，讓訂單清單取得更多高度 */
       .topbar{position:sticky!important;top:0!important;z-index:10000!important}
-      #tab-tracking .table-wrap{max-height:calc(100vh - 515px)!important;min-height:260px!important;overflow:auto!important;overscroll-behavior:contain!important}
+      #adminView{padding-top:4px!important}
+      #adminVersionRow{margin:0 0 3px!important;min-height:22px!important}
+      #adminVersionRow .system-version-chip{font-size:10px!important;padding:3px 7px!important}
+      #adminView .tabs{gap:6px!important;margin:2px 0 8px!important}
+      #adminView .tabs .tab{padding:8px 14px!important;min-height:36px!important;font-size:14px!important}
+      #tab-tracking .metrics{gap:10px!important;margin:0 0 10px!important}
+      #tab-tracking .metric.card{padding:10px 15px!important;min-height:68px!important;border-radius:12px!important}
+      #tab-tracking .metric span{font-size:11px!important;line-height:1.1!important}
+      #tab-tracking .metric strong{font-size:27px!important;line-height:1!important;margin-top:4px!important}
+      #tab-tracking .section-card{padding:12px 14px!important;border-radius:14px!important}
+      #tab-tracking .section-head{margin-bottom:7px!important;gap:8px!important}
+      #tab-tracking .section-head h2{font-size:18px!important;line-height:1.15!important;margin:0 0 2px!important}
+      #tab-tracking .section-head .muted{font-size:10px!important;line-height:1.2!important;margin:0!important}
+      #tab-tracking .section-head .btn{padding:7px 12px!important;min-height:34px!important}
+      #tab-tracking .filters{gap:7px!important;margin:0 0 7px!important}
+      #tab-tracking .filters input,#tab-tracking .filters select{min-height:36px!important;height:36px!important;padding-top:6px!important;padding-bottom:6px!important;font-size:13px!important}
+      #tab-tracking .table-wrap{max-height:calc(100vh - 355px)!important;min-height:360px!important;overflow:auto!important;overscroll-behavior:contain!important}
       #tab-tracking .table-wrap thead th{position:sticky!important;top:0!important;z-index:30!important;background:#f8fafc!important;box-shadow:0 1px 0 #e4e7ec!important}
       #tab-tracking .table-wrap table{margin-bottom:0!important}
+      #orderRows button[data-profile-edit-order],#orderRows button[data-employee-edit],#orderRows button[data-core-edit-order]{pointer-events:auto!important;cursor:pointer!important;touch-action:manipulation!important}
 
-      @media(max-height:800px){#tab-tracking .table-wrap{max-height:calc(100vh - 430px)!important;min-height:220px!important}}
+      @media(max-height:800px){#tab-tracking .table-wrap{max-height:calc(100vh - 320px)!important;min-height:300px!important}}
       @media(max-width:800px){
         .fix-order-grid,.fix-item-grid{grid-template-columns:1fr}.fix-order-grid .full{grid-column:auto}.fix-edit-overlay{padding:5px!important;align-items:flex-end!important}.fix-edit-card{border-radius:18px 18px 8px 8px!important}.fix-edit-actions .btn{flex:1}
-        #tab-tracking .table-wrap{max-height:calc(100vh - 470px)!important;min-height:260px!important}
+        #tab-tracking .metrics{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:6px!important}
+        #tab-tracking .metric.card{min-height:58px!important;padding:8px 10px!important}
+        #tab-tracking .metric strong{font-size:23px!important}
+        #tab-tracking .table-wrap{max-height:calc(100vh - 385px)!important;min-height:300px!important}
       }
     `;
     document.head.appendChild(st);
@@ -117,7 +138,7 @@
     if(!orderId) return alert('找不到此列的訂單 ID，請重新整理後再試。');
     ensureModal();
     const modal = $('fixOrderEditModal');
-    modal.style.display = 'flex';
+    modal.style.setProperty('display','flex','important');
     $('fixEditTitle').textContent = '編輯訂單｜載入中…';
     $('fixOrderFields').innerHTML = '<p class="muted">正在載入訂單資料…</p>';
     $('fixItemFields').innerHTML = '';
@@ -229,25 +250,34 @@
     }
   }
 
-  function handleEditClick(e, btn){
+  function handleEditPress(e, btn){
     const now = Date.now();
-    if(now - lastOpenAt < 250){ e.preventDefault(); return; }
+    if(now - lastOpenAt < 500){
+      e.preventDefault?.();
+      return;
+    }
     const orderId = orderIdFromButton(btn);
     if(!orderId) return;
     lastOpenAt = now;
-    e.preventDefault();
-    e.stopPropagation();
+    e.preventDefault?.();
+    e.stopPropagation?.();
     openEditor(orderId);
   }
 
   function bindVisibleEditButtons(){
     document.querySelectorAll('#orderRows button').forEach(btn => {
       if(!/編輯訂單/.test((btn.textContent || '').trim())) return;
-      if(btn.dataset.v218Bound === '1') return;
-      btn.dataset.v218Bound = '1';
-      btn.onclick = e => handleEditClick(e, btn);
-      btn.style.pointerEvents = 'auto';
-      btn.style.cursor = 'pointer';
+      if(btn.dataset.v219Bound === '1') return;
+      btn.dataset.v219Bound = '1';
+      btn.type = 'button';
+      btn.style.setProperty('pointer-events','auto','important');
+      btn.style.setProperty('cursor','pointer','important');
+      btn.style.setProperty('touch-action','manipulation','important');
+      btn.onpointerdown = e => handleEditPress(e, btn);
+      btn.onmousedown = e => {
+        if(typeof PointerEvent === 'undefined') handleEditPress(e, btn);
+      };
+      btn.onclick = e => handleEditPress(e, btn);
     });
   }
 
@@ -257,7 +287,18 @@
     ensureModal();
     bindVisibleEditButtons();
 
-    /* capture fallback：舊/新任何編輯按鈕都接管 */
+    /* pointerdown capture：比 click 更早，避開舊模組 click 攔截 */
+    document.addEventListener('pointerdown', e => {
+      const btn = e.target.closest?.('button');
+      if(!btn || !/編輯訂單/.test((btn.textContent || '').trim())) return;
+      const orderId = orderIdFromButton(btn);
+      if(!orderId) return;
+      e.preventDefault();
+      e.stopPropagation();
+      handleEditPress(e, btn);
+    }, true);
+
+    /* click fallback */
     document.addEventListener('click', e => {
       const btn = e.target.closest?.('button');
       if(!btn || !/編輯訂單/.test((btn.textContent || '').trim())) return;
@@ -265,7 +306,7 @@
       if(!orderId) return;
       e.preventDefault();
       e.stopPropagation();
-      openEditor(orderId);
+      handleEditPress(e, btn);
     }, true);
 
     $('fixEditSave')?.addEventListener('click', e => {
@@ -282,7 +323,7 @@
     setInterval(() => {
       setVersion();
       bindVisibleEditButtons();
-    }, 1200);
+    }, 1000);
   }
 
   window.__vendorOrderOpenEditor = openEditor;
