@@ -1,9 +1,65 @@
 (() => {
   'use strict';
 
-  // V2.24：只保留緊湊版面樣式。
-  // 編輯訂單事件由 employee-order-tools.js 單一處理，
-  // 不再使用 setInterval / pointerdown 接管，避免反覆掃描與多套事件互相干擾。
+  // V2.26 stability guard
+  // Several legacy observers watch childList and then write the same textContent
+  // again. Setting identical textContent still creates a DOM mutation, which can
+  // recursively wake the same observer and eventually freeze the page.
+  const VERSION = 'V2.26';
+
+  // Keep one authoritative version without a global MutationObserver loop.
+  try {
+    Object.defineProperty(window, 'APP_VERSION', {
+      configurable: false,
+      enumerable: true,
+      get: () => VERSION,
+      set: () => {}
+    });
+  } catch {
+    window.APP_VERSION = VERSION;
+  }
+
+  // Make identical textContent assignments a no-op. This is semantically safe
+  // and prevents MutationObserver -> textContent -> MutationObserver recursion.
+  try {
+    const d = Object.getOwnPropertyDescriptor(Node.prototype, 'textContent');
+    if (d?.get && d?.set && !window.__VENDOR_TEXT_STABILITY_GUARD__) {
+      window.__VENDOR_TEXT_STABILITY_GUARD__ = true;
+      Object.defineProperty(Node.prototype, 'textContent', {
+        configurable: d.configurable,
+        enumerable: d.enumerable,
+        get: d.get,
+        set(value) {
+          let next = value == null ? '' : String(value);
+          if (this?.nodeType === 1) {
+            const el = /** @type {Element} */ (this);
+            if (el.classList?.contains('system-version-chip') && /^系統版本\s+V/i.test(next)) {
+              next = `系統版本 ${VERSION}`;
+            } else if (el.tagName === 'FOOTER' && /^Vendor Order Tracking\s+V/i.test(next)) {
+              next = `Vendor Order Tracking ${VERSION}`;
+            }
+          }
+          if (d.get.call(this) === next) return;
+          d.set.call(this, next);
+        }
+      });
+    }
+  } catch (e) {
+    console.warn('text stability guard unavailable', e);
+  }
+
+  function applyVersion() {
+    document.querySelectorAll('.system-version-chip').forEach(el => {
+      const text = `系統版本 ${VERSION}`;
+      if (el.textContent !== text) el.textContent = text;
+    });
+    const footer = document.querySelector('footer');
+    const text = `Vendor Order Tracking ${VERSION}`;
+    if (footer && footer.textContent !== text) footer.textContent = text;
+  }
+
+  // Only compact-layout CSS remains here. No click interception, no interval,
+  // no MutationObserver, and no pseudo-element version text.
   const st = document.createElement('style');
   st.id = 'stableCompactAdminStyles';
   st.textContent = `
@@ -25,10 +81,6 @@
     #tab-tracking .table-wrap{max-height:calc(100vh - 355px)!important;min-height:360px!important;overflow:auto!important;overscroll-behavior:contain!important}
     #tab-tracking .table-wrap thead th{position:sticky!important;top:0!important;z-index:30!important;background:#f8fafc!important;box-shadow:0 1px 0 #e4e7ec!important}
     #orderRows button[data-employee-edit]{pointer-events:auto!important;cursor:pointer!important;touch-action:manipulation!important}
-    .system-version-chip{font-size:0!important}
-    .system-version-chip::after{content:'系統版本 V2.24';font-size:10px!important}
-    footer{font-size:0!important}
-    footer::after{content:'Vendor Order Tracking V2.24';font-size:12px!important}
     @media(max-height:800px){#tab-tracking .table-wrap{max-height:calc(100vh - 320px)!important;min-height:300px!important}}
     @media(max-width:800px){
       #tab-tracking .metrics{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:6px!important}
@@ -39,4 +91,11 @@
   `;
   document.getElementById(st.id)?.remove();
   document.head.appendChild(st);
+
+  applyVersion();
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', applyVersion, { once: true });
+  }
+  setTimeout(applyVersion, 300);
+  setTimeout(applyVersion, 1200);
 })();
