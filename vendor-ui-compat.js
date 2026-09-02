@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = 'V2.8';
+  const VERSION = 'V2.16';
 
   function getRole(){
     try{
