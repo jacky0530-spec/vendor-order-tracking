@@ -58,7 +58,7 @@
       <div class="card section-card">
         <div class="section-head"><div><h2>訂單追蹤</h2><p class="muted">已逾期與 3 天內到期固定置頂；其他訂單依訂單編號排序，可切換小到大或大到小。</p></div><button id="reloadBtn" class="btn ghost">重新整理</button></div>
         <div class="filters">
-          <input id="searchInput" placeholder="搜尋訂單、商品、廠商、收貨人">
+          <input id="searchInput" placeholder="搜尋訂單、商品、廠商、訂貨人、收貨人">
           <select id="vendorFilter"><option value="">全部廠商</option></select>
           <select id="alertFilter">
             <option value="">全部警示</option>
@@ -68,7 +68,7 @@
             <option value="completed">完成</option>
           </select>
         </div>
-        <div class="table-wrap"><table><thead><tr><th>警示</th><th>訂單</th><th>商品編號／商品名稱</th><th>廠商編號／廠商名稱</th><th>收貨人</th><th>原交期</th><th>廠商回覆</th><th>狀態</th><th></th></tr></thead><tbody id="orderRows"></tbody></table></div>
+        <div class="table-wrap"><table><thead><tr><th>警示</th><th>訂單／訂貨人</th><th>商品編號／商品名稱／最晚交期</th><th>廠商編號／廠商名稱</th><th>收貨人</th><th>原交期</th><th>廠商回覆</th><th>狀態</th><th></th></tr></thead><tbody id="orderRows"></tbody></table></div>
       </div>
     </div>
 
@@ -132,9 +132,9 @@
   </section>
 </main>
 
-<footer>Vendor Order Tracking V2.11</footer>
+<footer>Vendor Order Tracking V2.12</footer>
 <script src="./config.js?v=1"></script>
-<script src="./app.js?v=2"></script>
+<script src="./app.js?v=3"></script>
 <script src="./ui-patch.js?v=3"></script>
 <script src="./accounts.js?v=1"></script>
 <script src="./bulk-vendors.js?v=1"></script>
@@ -151,5 +151,6 @@
 <script src="./vendor-display-options.js?v=2"></script>
 <script src="./vendor-ui-compat.js?v=1"></script>
 <script src="./vendor-sort-admin-status.js?v=3"></script>
+<script src="./employee-order-tools.js?v=1"></script>
 </body>
 </html>
