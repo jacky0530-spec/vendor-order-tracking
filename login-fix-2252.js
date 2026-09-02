@@ -27,6 +27,20 @@
     document.body.classList.remove('role-employee', 'role-employee-full');
   }
 
+  function enterStableApp() {
+    try {
+      const base = new URL(window.top.location.href);
+      const parts = base.pathname.split('/');
+      parts[parts.length - 1] = 'app-v227.html';
+      base.pathname = parts.join('/');
+      base.search = '?build=227&login=ok';
+      base.hash = '';
+      window.top.location.replace(base.href);
+    } catch {
+      window.location.replace('./app-v227.html?build=227&login=ok');
+    }
+  }
+
   async function performLogin(event) {
     const button = $('loginBtn');
     if (!button || busy) return;
@@ -69,7 +83,7 @@
 
       localStorage.setItem('vendor_order_session', JSON.stringify(data));
       setMsg('登入成功，正在進入系統…', 'success');
-      window.location.replace(`${window.location.pathname}?build=2252&login=ok`);
+      enterStableApp();
     } catch (err) {
       localStorage.removeItem('vendor_order_session');
       setMsg(err?.message || '登入失敗，請再試一次。', 'error');
