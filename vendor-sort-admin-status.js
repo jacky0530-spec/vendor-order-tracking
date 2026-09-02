@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = 'V2.13';
+  const VERSION = 'V2.14';
   const $ = (id) => document.getElementById(id);
 
   function injectStyles(){
