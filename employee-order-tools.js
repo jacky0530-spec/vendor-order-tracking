@@ -20,6 +20,7 @@
     }catch{return {};}
   }
   function role(){ return jwt(session()?.access_token || '').app_metadata?.role || ''; }
+  function canEditOrders(){ return ['admin','employee'].includes(role()); }
 
   async function rest(path,opt={}){
     const s=session();
@@ -51,9 +52,9 @@
     const st=document.createElement('style');
     st.id='employeeOrderToolsStyles';
     st.textContent=`
-      .item-deadline-chip{display:inline-block;margin-left:8px;padding:3px 7px;border-radius:999px;background:#fff4e5;color:#b54708;font-size:11px;font-weight:800;white-space:nowrap}
+      .item-deadline-chip{display:inline-block;margin:5px 0 0 8px;padding:3px 7px;border-radius:999px;background:#fff4e5;color:#b54708;font-size:11px;font-weight:800;white-space:nowrap}
       .buyer-line{display:inline-block;margin-top:4px;font-size:12px;color:#344054}
-      .employee-edit-btn{margin-top:6px!important}
+      .employee-edit-btn{margin-top:6px!important;display:block!important}
       .employee-modal{position:fixed;inset:0;z-index:100000;background:rgba(16,24,40,.62);display:flex;align-items:center;justify-content:center;padding:16px}
       .employee-modal.hidden{display:none}.employee-modal-card{width:min(980px,100%);max-height:92vh;overflow:auto;background:#fff;border-radius:18px;padding:20px;box-shadow:0 24px 70px rgba(0,0,0,.3)}
       .employee-modal-head{display:flex;gap:12px;align-items:flex-start;justify-content:space-between}.employee-modal-head h2{margin:0}.employee-modal-close{border:0;background:#f2f4f7;width:40px;height:40px;border-radius:10px;font-size:22px;cursor:pointer}
@@ -76,7 +77,6 @@
     clone.dataset.employeeSafeReload='1';
     old.replaceWith(clone);
     clone.addEventListener('click',(e)=>{
-      // accounts.js 會程式化 click；該次不刷新，避免無限重新整理。
       if(e.isTrusted) location.reload();
     });
   }
@@ -128,6 +128,12 @@
     return deadlineLoading;
   }
 
+  function productColumnIndex(){
+    const table=$('orderRows')?.closest('table');
+    const heads=[...(table?.querySelectorAll('thead th')||[])];
+    return heads.findIndex(th=>/商品編號|商品名稱|^商品$/.test(th.textContent.trim()));
+  }
+
   async function enhanceDeadlines(){
     const r=role();
     if(!['admin','employee','vendor'].includes(r)) return;
@@ -143,34 +149,40 @@
       });
       return;
     }
+    const pi=productColumnIndex();
+    if(pi<0) return;
     document.querySelectorAll('#orderRows tr').forEach(tr=>{
       const orderId=tr.querySelector('[data-save-status]')?.dataset.saveStatus;
       if(!orderId) return;
       const list=all.filter(x=>x.order_id===orderId).sort((a,b)=>Number(a.sort_order||0)-Number(b.sort_order||0));
       if(!list.length) return;
-      const productCell=tr.children[2];if(!productCell)return;
-      const rows=[...productCell.querySelectorAll('.admin-item-row')];
-      if(rows.length){
-        rows.forEach((row,i)=>{
-          if(row.querySelector('.item-deadline-chip'))return;
-          const x=list[i];if(!x?.expected_deadline)return;
-          const chip=document.createElement('span');chip.className='item-deadline-chip';chip.textContent=`最晚交期 ${x.expected_deadline}`;
-          row.querySelector('.admin-item-name')?.appendChild(chip);
+      const productCell=tr.children[pi];
+      if(!productCell) return;
+      const itemRows=[...productCell.querySelectorAll('.admin-item-row')];
+      if(itemRows.length){
+        itemRows.forEach((row,i)=>{
+          const x=list[i];
+          if(!x?.expected_deadline) return;
+          let chip=row.querySelector('.item-deadline-chip');
+          if(!chip){chip=document.createElement('span');chip.className='item-deadline-chip';row.querySelector('.admin-item-name')?.appendChild(chip);}
+          chip.textContent=`最晚交期 ${x.expected_deadline}`;
         });
       }else{
         const lines=[...productCell.querySelectorAll('.product-line')];
         lines.forEach((line,i)=>{
-          if(line.querySelector('.item-deadline-chip'))return;
-          const x=list[i];if(!x?.expected_deadline)return;
-          const chip=document.createElement('span');chip.className='item-deadline-chip';chip.textContent=`最晚交期 ${x.expected_deadline}`;line.appendChild(chip);
+          const x=list[i];
+          if(!x?.expected_deadline) return;
+          let chip=line.querySelector('.item-deadline-chip');
+          if(!chip){chip=document.createElement('span');chip.className='item-deadline-chip';line.appendChild(chip);}
+          chip.textContent=`最晚交期 ${x.expected_deadline}`;
         });
       }
     });
   }
 
   function ensureEditButtons(){
-    if(role()!=='employee') return;
-    document.body.classList.add('role-employee');
+    if(!canEditOrders()) return;
+    if(role()==='employee') document.body.classList.add('role-employee');
     document.querySelectorAll('#orderRows tr').forEach(tr=>{
       const save=tr.querySelector('[data-save-status]');
       if(!save || tr.querySelector('[data-employee-edit]')) return;
@@ -184,7 +196,7 @@
     if($('employeeOrderModal')) return;
     const d=document.createElement('div');d.id='employeeOrderModal';d.className='employee-modal hidden';
     d.innerHTML=`<div class="employee-modal-card">
-      <div class="employee-modal-head"><div><h2 id="employeeEditTitle">編輯訂單</h2><div class="muted">員工可調整訂單基本資料、商品編號與逐品項最晚交期。</div></div><button type="button" class="employee-modal-close" data-close-employee-edit>×</button></div>
+      <div class="employee-modal-head"><div><h2 id="employeeEditTitle">編輯訂單</h2><div class="muted">管理員與員工可調整訂單基本資料、商品編號、商品資料與逐品項最晚交期。</div></div><button type="button" class="employee-modal-close" data-close-employee-edit>×</button></div>
       <div id="employeeOrderFields"></div><div id="employeeItemFields" class="employee-items-edit"></div>
       <div id="employeeEditMsg" class="message"></div>
       <div class="employee-modal-actions"><button type="button" class="btn ghost" data-close-employee-edit>取消</button><button type="button" class="btn primary" id="employeeEditSave">儲存修改</button></div>
@@ -199,6 +211,7 @@
   const statusName=s=>({new:'新訂單',vendor_unconfirmed:'待廠商確認',vendor_confirmed:'廠商已確認',preparing:'備貨中',shipped:'已出貨',completed:'已完成',cancelled:'已取消',out_of_stock:'缺貨',delayed:'延後'})[s]||s;
 
   async function openOrderEdit(orderId){
+    if(!canEditOrders()) return;
     ensureEditModal();
     try{
       const [orows,irows]=await Promise.all([
@@ -233,7 +246,7 @@
   }
 
   async function saveOrderEdit(){
-    if(!editingOrder) return;
+    if(!editingOrder || !canEditOrders()) return;
     const btn=$('employeeEditSave'),msg=$('employeeEditMsg');
     const forms=[...document.querySelectorAll('[data-ee-item]')];
     const payloads=[];
@@ -243,7 +256,7 @@
       if([...code].length>10){msg.textContent=`商品編號「${code}」超過 10 碼。`;msg.className='message error';return;}
       const deadline=f.querySelector('[data-ee="deadline"]')?.value||null;
       const qraw=f.querySelector('[data-ee="qty"]')?.value?.trim()||'';
-      payloads.push({id:f.dataset.eeItem,product_code:code,product_name:f.querySelector('[data-ee="name"]')?.value.trim()||'',quantity:qraw===''?null:Number(qraw),quantity_unit:f.querySelector('[data-ee="unit"]')?.value.trim()||null,expected_deadline:deadline,expected_from:deadline,lead_time_text:'員工調整'});
+      payloads.push({id:f.dataset.eeItem,product_code:code,product_name:f.querySelector('[data-ee="name"]')?.value.trim()||'',quantity:qraw===''?null:Number(qraw),quantity_unit:f.querySelector('[data-ee="unit"]')?.value.trim()||null,expected_deadline:deadline,expected_from:deadline,lead_time_text:'人工調整'});
     }
     btn.disabled=true;btn.textContent='儲存中…';msg.textContent='';
     try{
@@ -254,7 +267,7 @@
       }
       const dates=payloads.map(x=>x.expected_deadline).filter(Boolean).sort();
       if(dates.length){
-        await rest(`orders?id=eq.${encodeURIComponent(editingOrder.id)}`,{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify({expected_from:dates[0],expected_deadline:dates[dates.length-1],lead_time_text:'員工調整'})});
+        await rest(`orders?id=eq.${encodeURIComponent(editingOrder.id)}`,{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify({expected_from:dates[0],expected_deadline:dates[dates.length-1],lead_time_text:'人工調整'})});
       }
       msg.textContent='修改已儲存。';msg.className='message success';deadlineRows=null;
       setTimeout(()=>location.reload(),550);
@@ -278,7 +291,7 @@
     enhanceDeadlines();
     const or=$('orderRows');if(or&&!or.dataset.employeeToolsObserver){or.dataset.employeeToolsObserver='1';new MutationObserver(scheduleEnhance).observe(or,{childList:true,subtree:true});}
     const vr=$('vendorOrders');if(vr&&!vr.dataset.employeeDeadlineObserver){vr.dataset.employeeDeadlineObserver='1';new MutationObserver(scheduleEnhance).observe(vr,{childList:true,subtree:true});}
-    document.addEventListener('click',e=>{const b=e.target.closest?.('[data-employee-edit]');if(b&&role()==='employee'){e.preventDefault();openOrderEdit(b.dataset.employeeEdit);}});
+    document.addEventListener('click',e=>{const b=e.target.closest?.('[data-employee-edit]');if(b&&canEditOrders()){e.preventDefault();openOrderEdit(b.dataset.employeeEdit);}});
     setTimeout(scheduleEnhance,250);setTimeout(scheduleEnhance,800);setTimeout(scheduleEnhance,1600);
   }
 
