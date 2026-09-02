@@ -129,8 +129,9 @@
   async function showLoggedIn() {
     $('loginView').classList.add('hidden');
     $('logoutBtn').classList.remove('hidden');
-    $('identity').textContent = `${profile.display_name || profile.login_name} · ${profile.role === 'admin' ? '管理員' : '廠商'}`;
-    if (profile.role === 'admin') {
+    const roleName = profile.role === 'admin' ? '管理員' : profile.role === 'employee' ? '員工' : '廠商';
+    $('identity').textContent = `${profile.display_name || profile.login_name} · ${roleName}`;
+    if (profile.role === 'admin' || profile.role === 'employee') {
       $('adminView').classList.remove('hidden');
       $('vendorView').classList.add('hidden');
       await loadAdmin();
@@ -162,13 +163,14 @@
     return list.map((x) => {
       const qty = x.quantity != null ? ` × ${esc(x.quantity)}${esc(x.quantity_unit || '')}` : '';
       const variant = x.variant ? `｜${esc(x.variant)}` : '';
-      return `<span class="product-line"><b>${esc(x.product_code || '')}</b> ${esc(x.product_name || '')}${variant}${qty}</span>`;
+      const deadline = x.expected_deadline ? `<span class="item-deadline-chip">最晚交期 ${esc(x.expected_deadline)}</span>` : '';
+      return `<span class="product-line"><b>${esc(x.product_code || '')}</b> ${esc(x.product_name || '')}${variant}${qty}${deadline}</span>`;
     }).join('');
   }
 
   function searchProductText(orderId) {
     return items.filter((x) => x.order_id === orderId)
-      .map((x) => `${x.product_code || ''} ${x.product_name || ''} ${x.variant || ''} ${x.quantity || ''}`)
+      .map((x) => `${x.product_code || ''} ${x.product_name || ''} ${x.variant || ''} ${x.quantity || ''} ${x.expected_deadline || ''}`)
       .join(' ');
   }
 
@@ -209,13 +211,13 @@
     const vendorId = $('vendorFilter').value;
     const alert = $('alertFilter').value;
     const rows = orders.filter((o) => {
-      const hay = `${o.order_no} ${o.vendor_name} ${o.receiver || ''} ${o.receiver_phone || ''} ${searchProductText(o.id)}`.toLowerCase();
+      const hay = `${o.order_no} ${o.vendor_name} ${o.buyer || ''} ${o.receiver || ''} ${o.receiver_phone || ''} ${searchProductText(o.id)}`.toLowerCase();
       return (!q || hay.includes(q)) && (!vendorId || o.vendor_id === vendorId) && (!alert || o.alert_level === alert);
     });
     $('orderRows').innerHTML = rows.map((o) => `
       <tr>
         <td>${alertBadge(o.alert_level, o.overdue_days)}</td>
-        <td><b>${esc(o.order_no)}</b><br><span class="muted">${esc(o.order_date)}</span></td>
+        <td><b>${esc(o.order_no)}</b><br><span class="muted">${esc(o.order_date)}</span><br><span class="buyer-line">訂貨人：<b>${esc(o.buyer || '—')}</b></span></td>
         <td>${productLines(o.id)}</td>
         <td><b>${esc(o.vendor_code)}</b><br>${esc(o.vendor_name)}</td>
         <td>${esc(o.receiver || '—')}<br><span class="muted">${esc(o.receiver_phone || '')}</span></td>
@@ -321,9 +323,9 @@
       const u = updateMap.get(o.id) || {};
       const oi = (ownItems || []).filter((x) => x.order_id === o.id);
       return `<div class="vendor-order ${o.alert_level === 'overdue' ? 'overdue-card' : ''}">
-        <div class="vendor-order-head"><div><h3>${esc(o.order_no)}</h3><span class="muted">訂購日 ${esc(o.order_date)}</span></div>${alertBadge(o.alert_level,o.overdue_days)}</div>
-        <div class="item-box">${oi.map((x) => `<div><b>${esc(x.product_code || '')}</b> ${esc(x.product_name || '')}${x.variant ? `｜${esc(x.variant)}` : ''}${x.quantity != null ? ` × ${esc(x.quantity)}${esc(x.quantity_unit || '')}` : ''}</div>`).join('')}</div>
-        <div class="vendor-meta">收貨人：<b>${esc(o.receiver || '—')}</b>　原交期：${esc(fmt(o.expected_deadline))}</div>
+        <div class="vendor-order-head"><div><h3>${esc(o.order_no)}</h3><span class="muted">訂購日 ${esc(o.order_date)}　訂貨人 ${esc(o.buyer || '—')}</span></div>${alertBadge(o.alert_level,o.overdue_days)}</div>
+        <div class="item-box">${oi.map((x) => `<div><b>${esc(x.product_code || '')}</b> ${esc(x.product_name || '')}${x.variant ? `｜${esc(x.variant)}` : ''}${x.quantity != null ? ` × ${esc(x.quantity)}${esc(x.quantity_unit || '')}` : ''}${x.expected_deadline ? ` <span class="item-deadline-chip">最晚交期 ${esc(x.expected_deadline)}</span>` : ''}</div>`).join('')}</div>
+        <div class="vendor-meta">訂貨人：<b>${esc(o.buyer || '—')}</b>　收貨人：<b>${esc(o.receiver || '—')}</b>　原交期：${esc(fmt(o.expected_deadline))}</div>
         <div class="form-grid">
           <label>目前狀態<select id="v-status-${esc(o.id)}">${['confirmed','preparing','shipped','out_of_stock','delayed'].map((s) => `<option value="${s}" ${u.vendor_status===s?'selected':''}>${({confirmed:'廠商已確認',preparing:'備貨中',shipped:'已出貨',out_of_stock:'缺貨',delayed:'延後'})[s]}</option>`).join('')}</select></label>
           <label>預計出貨日<input id="v-promised-${esc(o.id)}" type="date" value="${esc(u.promised_ship_date || '')}"></label>
@@ -374,7 +376,6 @@
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.msg || data.message || '密碼更新失敗');
-      // 後端權限旗標若尚未同步，不影響新密碼立即生效。
       setMessage('passwordMsg','新密碼已生效。請妥善保存。','success');
       $('passwordNotice').classList.add('hidden');
       $('passwordPanel').classList.add('hidden');
@@ -420,9 +421,6 @@
     $('searchInput').addEventListener('input', renderOrders);
     $('vendorFilter').addEventListener('change', renderOrders);
     $('alertFilter').addEventListener('change', renderOrders);
-    // Keep the system refresh button identical to a browser page refresh.
-    // The authenticated session is stored in localStorage, so a full reload
-    // re-runs every UI enhancement module without logging the user out.
     $('reloadBtn').addEventListener('click', () => location.reload());
     $('reloadReviewBtn').addEventListener('click', loadReviewQueue);
     $('vendorReloadBtn').addEventListener('click', loadVendor);
