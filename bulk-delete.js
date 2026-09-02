@@ -45,11 +45,17 @@
       .bulk-delete-bar .bulk-count{font-weight:700;color:#93370d}
       .bulk-delete-btn{background:#b54708!important;color:#fff!important;border-color:#b54708!important}
       .bulk-delete-btn:disabled{opacity:.45;cursor:not-allowed}
-      .order-select-cell,.order-select-head{width:42px;text-align:center!important;vertical-align:middle!important}
+      .order-select-cell,.order-select-head{width:42px;min-width:42px;max-width:42px;text-align:center!important;vertical-align:middle!important;padding-left:8px!important;padding-right:8px!important}
       .order-select-cell input,.order-select-head input{width:20px;height:20px;cursor:pointer}
       body.role-employee .bulk-delete-bar,body.role-employee .order-select-cell,body.role-employee .order-select-head{display:none!important}
     `;
     document.head.appendChild(st);
+  }
+
+  function orderIdFromRow(row) {
+    return row.querySelector('[data-save-status]')?.dataset.saveStatus ||
+      row.querySelector('[data-delete-order]')?.dataset.deleteOrder ||
+      row.querySelector('[data-employee-edit]')?.dataset.employeeEdit || '';
   }
 
   function visibleSelectableRows() {
@@ -108,6 +114,29 @@
     $('bulkDeleteBtn').addEventListener('click', bulkRecycleSelected);
   }
 
+  function bindRowCheckbox(cb) {
+    if (!cb || cb.dataset.bulkBound === '1') return;
+    cb.dataset.bulkBound = '1';
+    cb.addEventListener('change', updateBulkState);
+  }
+
+  function ensureRowSelectCell(row) {
+    const orderId = orderIdFromRow(row);
+    if (!orderId) return;
+    let td = row.querySelector('.order-select-cell');
+    if (!td) {
+      td = document.createElement('td');
+      td.className = 'order-select-cell';
+      td.innerHTML = `<input type="checkbox" class="order-select-checkbox" data-order-id="${orderId}" aria-label="選取訂單">`;
+      row.insertBefore(td,row.firstChild);
+    }
+    const cb = td.querySelector('.order-select-checkbox');
+    if (cb) {
+      cb.dataset.orderId = orderId;
+      bindRowCheckbox(cb);
+    }
+  }
+
   function enhanceTable() {
     if (!isAdmin()) return;
     ensureBulkBar();
@@ -131,24 +160,22 @@
     }
 
     body.querySelectorAll('tr').forEach(row=>{
-      const saveBtn=row.querySelector('[data-save-status]');
-      if(!saveBtn) return;
-      const orderId=saveBtn.dataset.saveStatus;
-      if(!orderId) return;
-
       const oldDelete = row.querySelector('[data-delete-order]');
       if (oldDelete) {
         oldDelete.textContent = '移到回收桶';
         oldDelete.title = '可從回收桶還原';
       }
-
-      if(row.querySelector('.order-select-cell')) return;
-      const td=document.createElement('td');
-      td.className='order-select-cell';
-      td.innerHTML=`<input type="checkbox" class="order-select-checkbox" data-order-id="${orderId}" aria-label="選取訂單">`;
-      row.insertBefore(td,row.firstChild);
-      td.querySelector('input').addEventListener('change',updateBulkState);
+      ensureRowSelectCell(row);
     });
+
+    // 最後再校正一次：表頭有批次勾選欄時，每一筆有效訂單也必須有相同第一欄。
+    if (headRow?.querySelector('.order-select-head')) {
+      body.querySelectorAll('tr').forEach(row => {
+        if (orderIdFromRow(row) && !row.firstElementChild?.classList.contains('order-select-cell')) {
+          ensureRowSelectCell(row);
+        }
+      });
+    }
     updateBulkState();
   }
 
@@ -194,6 +221,12 @@
     }
   }
 
+  let reconcileTimer = null;
+  function scheduleEnhance(delay=30) {
+    clearTimeout(reconcileTimer);
+    reconcileTimer=setTimeout(enhanceTable,delay);
+  }
+
   function install() {
     injectStyles();
     if(!isAdmin()) return;
@@ -202,11 +235,7 @@
     const body=$('orderRows');
     if(body&&!body.dataset.bulkDeleteObserved){
       body.dataset.bulkDeleteObserved='1';
-      let timer;
-      new MutationObserver(()=>{
-        clearTimeout(timer);
-        timer=setTimeout(enhanceTable,40);
-      }).observe(body,{childList:true,subtree:true});
+      new MutationObserver(()=>scheduleEnhance(20)).observe(body,{childList:true,subtree:true});
     }
     if(!document.documentElement.dataset.bulkDeleteClickInstalled){
       document.documentElement.dataset.bulkDeleteClickInstalled='1';
@@ -222,17 +251,20 @@
   }
 
   window.addEventListener('DOMContentLoaded',()=>{
-    setTimeout(install,150);
-    setTimeout(install,700);
-    setTimeout(install,1500);
+    [100,300,700,1200,2000,3500].forEach(ms=>setTimeout(install,ms));
     $('loginBtn')?.addEventListener('click',()=>{
-      setTimeout(install,350);
-      setTimeout(install,900);
-      setTimeout(install,1600);
+      [250,600,1000,1600,2600].forEach(ms=>setTimeout(install,ms));
     });
-    ['searchInput','vendorFilter','alertFilter','hideShippedToggle'].forEach(id=>{
-      $(id)?.addEventListener('input',()=>setTimeout(updateBulkState,20));
-      $(id)?.addEventListener('change',()=>setTimeout(updateBulkState,20));
+    ['searchInput','vendorFilter','alertFilter','hideShippedToggle','reloadBtn'].forEach(id=>{
+      $(id)?.addEventListener('input',()=>scheduleEnhance(20));
+      $(id)?.addEventListener('change',()=>scheduleEnhance(20));
+      $(id)?.addEventListener('click',()=>scheduleEnhance(80));
     });
+    // 其他相容模組可能在載入後再次重畫 tbody；短時間輪詢只做欄位校正。
+    let checks=0;
+    const timer=setInterval(()=>{
+      if(++checks>20){clearInterval(timer);return;}
+      if(isAdmin()) enhanceTable();
+    },500);
   });
 })();
