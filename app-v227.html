@@ -5,20 +5,157 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="color-scheme" content="light">
   <title>廠商訂單追蹤系統 V2.27</title>
-  <style>
-    html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#f5f7fa;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color:#101828}
-    #bootView{position:fixed;inset:0;display:grid;place-items:center;background:#f5f7fa}
-    .boot{background:#fff;border:1px solid #e4e7ec;border-radius:16px;padding:26px 30px;box-shadow:0 10px 30px #10182814;text-align:center;min-width:280px}
-    .boot strong{display:block;font-size:22px;margin-bottom:8px}.boot span{color:#667085;font-size:14px}
-    #appFrame{width:100%;height:100%;border:0;display:block;background:#f5f7fa}
-    [hidden]{display:none!important}
-  </style>
+  <link rel="stylesheet" href="./styles.css?build=227">
+  <link rel="stylesheet" href="./vendor-spacing.css?build=227">
 </head>
 <body>
-  <div id="bootView">
-    <div class="boot"><strong>系統 V2.27 載入中…</strong><span id="bootMsg">正在取得穩定版程式</span></div>
+<header class="topbar">
+  <div>
+    <div class="brand">廠商訂單追蹤系統</div>
+    <div class="subtitle">LINE 訂單・交期・廠商出貨追蹤</div>
   </div>
-  <iframe id="appFrame" title="廠商訂單追蹤系統 V2.27" hidden></iframe>
-  <script src="./app-v227-loader.js?build=227b"></script>
+  <div class="top-actions">
+    <span id="identity" class="identity"></span>
+    <button id="logoutBtn" class="btn ghost hidden">登出</button>
+  </div>
+</header>
+
+<main class="container">
+  <section id="loginView" class="login-card card">
+    <h1>系統登入</h1>
+    <p class="muted">管理員使用 ADMIN；員工使用自訂帳號；廠商使用 V0001、V0002…</p>
+    <label>帳號<input id="loginName" autocomplete="username" placeholder="ADMIN、STAFF01 或 V0001"></label>
+    <label>密碼<input id="loginPassword" type="password" autocomplete="current-password"></label>
+    <button id="loginBtn" class="btn primary wide">登入</button>
+    <div id="loginMsg" class="message"></div>
+
+    <details class="setup-box hidden">
+      <summary>首次建立管理員</summary>
+      <p class="muted">只使用一次。建立成功後初始化功能會自動關閉。</p>
+      <label>首次設定碼<input id="setupCode" autocomplete="off"></label>
+      <label>管理員密碼<input id="setupPassword" type="password" autocomplete="new-password" placeholder="至少 8 碼"></label>
+      <button id="setupBtn" class="btn secondary wide">建立 ADMIN</button>
+      <div id="setupMsg" class="message"></div>
+    </details>
+  </section>
+
+  <section id="adminView" class="hidden">
+    <nav class="tabs">
+      <button class="tab active" data-tab="tracking">訂單追蹤</button>
+      <button class="tab" data-tab="report">廠商報表</button>
+      <button class="tab" data-tab="vendors">廠商設定</button>
+      <button class="tab" data-tab="history">匯入歷史</button>
+      <button class="tab" data-tab="review">LINE 異常</button>
+    </nav>
+
+    <div id="tab-tracking" class="tab-panel">
+      <div class="metrics">
+        <div class="metric card"><span>未完成</span><strong id="metricOpen">0</strong></div>
+        <div class="metric card warn"><span>3 天內到期</span><strong id="metricSoon">0</strong></div>
+        <div class="metric card danger"><span>已逾期</span><strong id="metricLate">0</strong></div>
+        <div class="metric card good"><span>已出貨／完成</span><strong id="metricDone">0</strong></div>
+      </div>
+      <div class="card section-card">
+        <div class="section-head"><div><h2>訂單追蹤</h2><p class="muted">已逾期與 3 天內到期固定置頂；其他訂單依訂單編號排序，可切換小到大或大到小。</p></div><button id="reloadBtn" class="btn ghost">重新整理</button></div>
+        <div class="filters">
+          <input id="searchInput" placeholder="搜尋訂單、商品、廠商、訂貨人、收貨人">
+          <select id="vendorFilter"><option value="">全部廠商</option></select>
+          <select id="alertFilter">
+            <option value="">全部警示</option>
+            <option value="overdue">已逾期</option>
+            <option value="due_soon">3 天內到期</option>
+            <option value="normal">正常</option>
+            <option value="completed">完成</option>
+          </select>
+        </div>
+        <div class="table-wrap"><table><thead><tr><th>警示</th><th>訂單／訂貨人</th><th>商品編號／商品名稱／最晚交期</th><th>廠商編號／廠商名稱</th><th>收貨人</th><th>原交期</th><th>廠商回覆</th><th>狀態</th><th></th></tr></thead><tbody id="orderRows"></tbody></table></div>
+      </div>
+    </div>
+
+    <div id="tab-report" class="tab-panel hidden">
+      <div class="card section-card">
+        <div class="section-head"><div><h2>廠商即時概況</h2><p class="muted">可點廠商、未出貨、逾期、3天內到期、已出貨或出貨箱數查看逐商品明細與超過天數。</p></div></div>
+        <div class="table-wrap"><table><thead><tr><th>廠商</th><th>全部</th><th>未出貨</th><th>逾期</th><th>3天內到期</th><th>已出貨</th><th>準時率</th><th>平均延遲</th></tr></thead><tbody id="vendorReportRows"></tbody></table></div>
+      </div>
+      <div class="card section-card">
+        <h2>每月出貨統計</h2>
+        <div class="table-wrap"><table><thead><tr><th>月份</th><th>廠商</th><th>訂單</th><th>已出貨</th><th>待出貨</th><th>準時</th><th>延遲</th><th>準時率</th></tr></thead><tbody id="monthlyReportRows"></tbody></table></div>
+      </div>
+    </div>
+
+    <div id="tab-vendors" class="tab-panel hidden">
+      <div class="card section-card">
+        <div class="section-head"><div><h2>廠商設定與帳號</h2><p class="muted">新出貨方會由 LINE 自動建立廠商；這裡設定預設交期並發放帳號。</p></div></div>
+        <div id="credentialBox"></div>
+        <div id="vendorCards" class="vendor-grid"></div>
+      </div>
+    </div>
+
+    <div id="tab-history" class="tab-panel hidden">
+      <div class="card section-card">
+        <div class="section-head"><div><h2>LINE 匯入歷史</h2><p class="muted">每次 LINE 收到的訂單訊息都保留紀錄；訊息收回時，未出貨訂單會自動移至回收桶。</p></div><button id="reloadHistoryBtn" class="btn ghost">重新整理</button></div>
+        <div class="filters">
+          <input id="historySearch" placeholder="搜尋訂單、廠商、原始 LINE 內容">
+          <select id="historyStatus">
+            <option value="">全部狀態</option>
+            <option value="parsed">成功匯入</option>
+            <option value="needs_review">需人工確認</option>
+            <option value="ignored">已忽略</option>
+            <option value="error">錯誤</option>
+          </select>
+        </div>
+        <div id="historySummary" class="muted" style="margin:10px 0"></div>
+        <div class="table-wrap"><table><thead><tr><th>匯入時間</th><th>結果</th><th>訂單</th><th>廠商</th><th>原始 LINE 訊息</th></tr></thead><tbody id="historyRows"><tr><td colspan="5" class="muted">點選「匯入歷史」後載入。</td></tr></tbody></table></div>
+      </div>
+    </div>
+
+    <div id="tab-review" class="tab-panel hidden">
+      <div class="card section-card">
+        <div class="section-head"><div><h2>LINE 解析異常</h2><p class="muted">未辨識商品或其他真正需要人工確認的原始訊息。</p></div><button id="reloadReviewBtn" class="btn ghost">重新整理</button></div>
+        <div id="reviewList"></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="vendorView" class="hidden">
+    <div class="card section-card">
+      <div class="section-head"><div><h2 id="vendorTitle">我的訂單</h2><p class="muted">可跨不同訂單勾選本次要一起出貨的商品；全部勾選完成後，只需輸入一次預計出貨日、實際出貨日與本批總箱數。物流資訊與備註可選填。</p></div><button id="vendorReloadBtn" class="btn ghost">重新整理</button></div>
+      <div id="passwordNotice" class="notice warning hidden">這是初始密碼登入，請先設定自己的新密碼。 <button id="showPasswordBtn" class="btn small secondary">修改密碼</button></div>
+      <div id="passwordPanel" class="card inner-card hidden">
+        <label>新密碼<input id="newPassword" type="password" placeholder="至少 8 碼"></label>
+        <label>再次輸入<input id="newPassword2" type="password"></label>
+        <button id="changePasswordBtn" class="btn primary">儲存新密碼</button>
+        <div id="passwordMsg" class="message"></div>
+      </div>
+      <div id="vendorOrders"></div>
+    </div>
+  </section>
+</main>
+
+<footer>Vendor Order Tracking V2.27</footer>
+<script src="./config.js?build=227"></script>
+<script src="./app.js?build=227"></script>
+<script src="./ui-patch.js?build=227"></script>
+<script src="./accounts.js?build=227"></script>
+<script src="./bulk-vendors.js?build=227"></script>
+<script src="./bulk-delete.js?build=227"></script>
+<script src="./recycle-bin.js?build=227"></script>
+<script src="./shipping-reports.js?build=227"></script>
+<script src="./column-clarity.js?build=227"></script>
+<script src="./item-shipping-v2.js?build=227"></script>
+<script src="./cross-order-shipping.js?build=227"></script>
+<script src="./order-sort.js?build=227"></script>
+<script src="./vendor-column-fix.js?build=227"></script>
+<script src="./responsive.js?build=227"></script>
+<script src="./reload-full.js?build=227"></script>
+<script src="./vendor-display-options.js?build=227"></script>
+<script src="./vendor-ui-compat.js?build=227"></script>
+<script src="./vendor-sort-admin-status.js?build=227"></script>
+<script src="./employee-order-tools.js?build=227"></script>
+<script src="./order-edit-click-fix.js?build=227"></script>
+<script src="./employee-full-access.js?build=227"></script>
+<script src="./login-fix-v227.js?build=227"></script>
+<script src="./version-authority-227.js?build=227"></script>
+<script src="./stable-order-editor-v227.js?build=227"></script>
 </body>
 </html>
