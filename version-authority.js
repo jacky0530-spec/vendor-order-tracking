@@ -1,8 +1,8 @@
 (() => {
   'use strict';
 
-  const VERSION = 'V2.25';
-  window.APP_VERSION = VERSION;
+  const VERSION = 'V2.26';
+  try { window.APP_VERSION = VERSION; } catch {}
 
   function applyVersion() {
     document.querySelectorAll('.system-version-chip').forEach(el => {
@@ -16,29 +16,12 @@
     }
   }
 
-  let correcting = false;
-  function scheduleApply() {
-    if (correcting) return;
-    correcting = true;
-    queueMicrotask(() => {
-      correcting = false;
-      applyVersion();
-    });
-  }
-
   applyVersion();
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', applyVersion, { once: true });
   }
-
-  const root = document.documentElement;
-  const observer = new MutationObserver(mutations => {
-    for (const m of mutations) {
-      if (m.type === 'characterData' || m.type === 'childList') {
-        scheduleApply();
-        break;
-      }
-    }
-  });
-  observer.observe(root, { subtree: true, childList: true, characterData: true });
+  // Finite corrections only. Do not observe the entire DOM forever.
+  setTimeout(applyVersion, 300);
+  setTimeout(applyVersion, 1200);
+  setTimeout(applyVersion, 2600);
 })();
