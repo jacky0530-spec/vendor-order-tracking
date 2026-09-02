@@ -57,7 +57,10 @@
       </div>
       <div class="card section-card">
         <div class="section-head">
-          <div><h2>訂單追蹤</h2><p class="muted">已逾期與 3 天內到期固定置頂；其他訂單可依訂單編號排序。</p></div>
+          <div>
+            <h2>訂單追蹤</h2>
+            <p class="muted">已逾期與 3 天內到期固定置頂；其他訂單可依訂單編號排序。</p>
+          </div>
           <button id="reloadBtn" class="btn ghost">重新整理</button>
         </div>
         <div class="filters">
@@ -71,7 +74,24 @@
             <option value="completed">完成</option>
           </select>
         </div>
-        <div class="table-wrap"><table><thead><tr><th>警示</th><th>訂單／訂貨人</th><th>商品編號／商品名稱／最晚交期</th><th>廠商編號／廠商名稱</th><th>收貨人</th><th>原交期</th><th>廠商回覆</th><th>狀態</th><th></th></tr></thead><tbody id="orderRows"></tbody></table></div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>警示</th>
+                <th>訂單／訂貨人</th>
+                <th>商品編號／商品名稱／最晚交期</th>
+                <th>廠商編號／廠商名稱</th>
+                <th>收貨人</th>
+                <th>原交期</th>
+                <th>廠商回覆</th>
+                <th>狀態</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="orderRows"></tbody>
+          </table>
+        </div>
       </div>
     </div>
 
@@ -99,7 +119,13 @@
         <div class="section-head"><div><h2>LINE 匯入歷史</h2><p class="muted">保留每次 LINE 訂單訊息與處理結果。</p></div><button id="reloadHistoryBtn" class="btn ghost">重新整理</button></div>
         <div class="filters">
           <input id="historySearch" placeholder="搜尋訂單、廠商、原始 LINE 內容">
-          <select id="historyStatus"><option value="">全部狀態</option><option value="parsed">成功匯入</option><option value="needs_review">需人工確認</option><option value="ignored">已忽略</option><option value="error">錯誤</option></select>
+          <select id="historyStatus">
+            <option value="">全部狀態</option>
+            <option value="parsed">成功匯入</option>
+            <option value="needs_review">需人工確認</option>
+            <option value="ignored">已忽略</option>
+            <option value="error">錯誤</option>
+          </select>
         </div>
         <div id="historySummary" class="muted" style="margin:10px 0"></div>
         <div class="table-wrap"><table><thead><tr><th>匯入時間</th><th>結果</th><th>訂單</th><th>廠商</th><th>原始 LINE 訊息</th></tr></thead><tbody id="historyRows"><tr><td colspan="5" class="muted">點選「匯入歷史」後載入。</td></tr></tbody></table></div>
@@ -130,11 +156,13 @@
 </main>
 
 <footer>Vendor Order Tracking V2.28</footer>
+
 <script src="./config.js?build=228"></script>
 <script src="./app.js?build=228"></script>
 <script src="./shipping-reports.js?build=228"></script>
 <script src="./item-shipping-v2.js?build=228"></script>
 <script src="./cross-order-shipping.js?build=228"></script>
+<script src="./vendor-click-reliability-v228.js?build=228-click1"></script>
 <script src="./responsive.js?build=228"></script>
 <script src="./admin-tools-v228.js?build=228"></script>
 </body>
