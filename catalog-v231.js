@@ -321,7 +321,7 @@ async function downloadImage(im){
   }catch(e){window.open(publicImage(im.storage_path),'_blank');}
 }
 async function updateCartCount(){
-  if(!isVendor()||!$('catCartCount'))return;try{var rows=await rpc('catalog_get_cart',{});$('catCartCount').textContent=rows&&rows.length?'('+rows.length+')':'';}catch(e){}
+  if(!isCustomer()||!$('catCartCount'))return;try{var rows=await rpc('catalog_get_cart',{});$('catCartCount').textContent=rows&&rows.length?'('+rows.length+')':'';}catch(e){}
 }
 async function renderCart(){
   var area=$('catalogCustomerArea');area.innerHTML='<div class="catalog-empty">載入購物車…</div>';
