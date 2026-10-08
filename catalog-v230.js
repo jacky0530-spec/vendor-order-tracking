@@ -1,0 +1,316 @@
+
+(function(){
+'use strict';
+
+var CFG=window.APP_CONFIG||{}, SB=CFG.SUPABASE_URL, KEY=CFG.SUPABASE_PUBLISHABLE_KEY;
+var state={profile:null,levels:[],vendors:[],products:[],images:[],variants:[],adminReady:false,vendorReady:false,currentProduct:null};
+function $(id){return document.getElementById(id);}
+function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+function money(v){return '$'+Number(v||0).toLocaleString('zh-TW',{minimumFractionDigits:0,maximumFractionDigits:2});}
+function sess(){try{return JSON.parse(localStorage.getItem('vendor_order_session')||'null');}catch(e){return null;}}
+async function authFetch(url,opt){
+  opt=opt||{}; var s=sess();
+  var headers=Object.assign({apikey:KEY,Authorization:'Bearer '+((s&&s.access_token)||'')},opt.headers||{});
+  return fetch(url,Object.assign({},opt,{headers:headers}));
+}
+async function rest(path,opt){
+  opt=opt||{}; var headers=Object.assign({'Content-Type':'application/json'},opt.headers||{});
+  var res=await authFetch(SB+'/rest/v1/'+path,Object.assign({},opt,{headers:headers}));
+  var txt=await res.text(); if(!res.ok){var m=txt;try{var d=JSON.parse(txt);m=d.message||d.hint||d.details||txt;}catch(e){} throw new Error(m||('HTTP '+res.status));}
+  return txt?JSON.parse(txt):null;
+}
+async function rpc(name,body){
+  return rest('rpc/'+name,{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify(body||{})});
+}
+function publicImage(path){return path?SB+'/storage/v1/object/public/catalog-images/'+path.split('/').map(encodeURIComponent).join('/'):'';}
+async function loadProfile(){
+  var s=sess(); if(!s||!s.user||!s.user.id)return null;
+  var rows=await rest('user_profiles?select=*&user_id=eq.'+encodeURIComponent(s.user.id));
+  state.profile=rows&&rows[0]||null; return state.profile;
+}
+function isManager(){return state.profile&&(state.profile.role==='admin'||state.profile.role==='employee');}
+function isVendor(){return state.profile&&state.profile.role==='vendor'&&state.profile.vendor_id;}
+function saleState(p){
+  var now=Date.now(), st=p.sale_start_at?new Date(p.sale_start_at).getTime():null, en=p.sale_end_at?new Date(p.sale_end_at).getTime():null;
+  if(st&&now<st)return '尚未開賣'; if(en&&now>en)return '已結單'; return p.sale_mode==='in_stock'?'現貨':'預購';
+}
+function saleOpen(p){
+  var s=saleState(p); return s!=='尚未開賣'&&s!=='已結單'&&p.active&&p.published;
+}
+function fmtDate(v){if(!v)return '—';try{return new Date(v).toLocaleString('zh-TW',{timeZone:'Asia/Taipei'});}catch(e){return v;}}
+function firstImage(pid){
+  var a=state.images.filter(function(x){return x.product_id===pid;}).sort(function(a,b){return (a.sort_order||0)-(b.sort_order||0);});
+  return a[0]||null;
+}
+function getVariants(pid){return state.variants.filter(function(x){return x.product_id===pid&&x.active!==false;}).sort(function(a,b){return (a.sort_order||0)-(b.sort_order||0);});}
+function btn(text,cls,attrs){return '<button type="button" class="'+(cls||'btn ghost')+'" '+(attrs||'')+'>'+esc(text)+'</button>';}
+
+async function loadCommonAdmin(){
+  var rs=await Promise.all([
+    rest('vendor_levels?select=*&order=sort_order.asc'),
+    rest('vendors?select=id,vendor_code,name,active&order=vendor_code.asc'),
+    rest('catalog_products?select=*&order=created_at.desc'),
+    rest('catalog_product_images?select=*&order=sort_order.asc,created_at.asc'),
+    rest('catalog_variants?select=*&order=sort_order.asc')
+  ]);
+  state.levels=rs[0]||[];state.vendors=rs[1]||[];state.products=rs[2]||[];state.images=rs[3]||[];state.variants=rs[4]||[];
+}
+async function loadStorefront(){
+  var products=await rest('catalog_storefront?select=*&order=created_at.desc');
+  state.products=products||[];
+  var ids=state.products.map(function(x){return x.id;});
+  if(!ids.length){state.images=[];state.variants=[];return;}
+  var q='in.('+ids.join(',')+')';
+  var rs=await Promise.all([
+    rest('catalog_product_images?select=*&product_id='+encodeURIComponent(q)+'&order=sort_order.asc,created_at.asc'),
+    rest('catalog_variants?select=*&product_id='+encodeURIComponent(q)+'&active=eq.true&order=sort_order.asc')
+  ]);
+  state.images=rs[0]||[];state.variants=rs[1]||[];
+}
+
+function ensureAdminTab(){
+  if($('tab-catalog'))return;
+  var nav=document.querySelector('#adminView .tabs'); if(!nav)return;
+  var b=document.createElement('button');b.className='tab';b.dataset.tab='catalog';b.textContent='批發商城';nav.appendChild(b);
+  var panel=document.createElement('div');panel.id='tab-catalog';panel.className='tab-panel hidden';
+  panel.innerHTML='<div class="card section-card"><div class="catalog-head"><div><h2>批發商城</h2><p class="muted">商品刊登、多圖、廠商等級、專屬價格與指定販售對象。</p></div><button id="catNewProduct" class="btn primary" type="button">＋新增商品</button></div><div class="catalog-subnav"><button class="active" data-cat-admin="products">商品管理</button><button data-cat-admin="levels">廠商等級</button></div><div id="catAdminProducts"></div><div id="catAdminLevels" class="hidden"></div></div>';
+  document.querySelector('#adminView').appendChild(panel);
+  b.addEventListener('click',function(){
+    document.querySelectorAll('#adminView .tab').forEach(function(x){x.classList.toggle('active',x===b);});
+    document.querySelectorAll('#adminView .tab-panel').forEach(function(x){x.classList.add('hidden');}); panel.classList.remove('hidden');
+    loadAdminCatalog().catch(showErr);
+  });
+  nav.querySelectorAll('.tab').forEach(function(x){if(x!==b)x.addEventListener('click',function(){panel.classList.add('hidden');});});
+  panel.querySelectorAll('[data-cat-admin]').forEach(function(x){x.addEventListener('click',function(){
+    panel.querySelectorAll('[data-cat-admin]').forEach(function(z){z.classList.remove('active');});x.classList.add('active');
+    $('catAdminProducts').classList.toggle('hidden',x.dataset.catAdmin!=='products');
+    $('catAdminLevels').classList.toggle('hidden',x.dataset.catAdmin!=='levels');
+    if(x.dataset.catAdmin==='levels')renderLevelAdmin();
+  });});
+  $('catNewProduct').addEventListener('click',function(){openProductEditor(null);});
+}
+async function loadAdminCatalog(){
+  await loadCommonAdmin(); renderAdminProducts(); state.adminReady=true;
+}
+function renderAdminProducts(){
+  var el=$('catAdminProducts'); if(!el)return;
+  var cards=state.products.map(function(p){
+    var im=firstImage(p.id), n=state.images.filter(function(x){return x.product_id===p.id;}).length;
+    return '<div class="catalog-card"><div class="catalog-card-img">'+(im?'<img src="'+esc(publicImage(im.storage_path))+'" alt="">':'<span class="muted">尚無圖片</span>')+'</div><div class="catalog-card-body"><div class="catalog-code">'+esc(p.product_code)+'</div><div class="catalog-name">'+esc(p.name)+'</div><div class="catalog-price">'+money(p.base_price)+'</div><div class="catalog-meta"><span class="catalog-pill '+(p.published?'good':'warn')+'">'+(p.published?'已上架':'草稿')+'</span><span class="catalog-pill">'+esc(p.sale_mode==='in_stock'?'現貨':'預購')+'</span><span class="catalog-pill">'+n+' 張圖</span><span class="catalog-pill">'+esc(p.visibility_mode==='all'?'全部廠商':'指定販售')+'</span></div><div class="catalog-card-actions">'+btn('編輯','btn secondary','data-cat-edit="'+p.id+'"')+'</div></div></div>';
+  }).join('');
+  el.innerHTML='<div class="catalog-toolbar"><input id="catAdminSearch" placeholder="搜尋商品編號、名稱"><select id="catAdminMode"><option value="">全部類型</option><option value="in_stock">現貨</option><option value="preorder">預購</option></select><select id="catAdminPub"><option value="">全部狀態</option><option value="1">已上架</option><option value="0">草稿</option></select></div><div id="catAdminGrid" class="catalog-grid">'+(cards||'<div class="catalog-empty">尚未建立商城商品。</div>')+'</div>';
+  el.querySelectorAll('[data-cat-edit]').forEach(function(x){x.addEventListener('click',function(){openProductEditor(x.dataset.catEdit);});});
+  function filter(){
+    var q=($('catAdminSearch').value||'').toLowerCase(),m=$('catAdminMode').value,pub=$('catAdminPub').value;
+    el.querySelectorAll('.catalog-card').forEach(function(card,i){
+      var p=state.products[i],ok=(!q||((p.product_code+' '+p.name).toLowerCase().indexOf(q)>=0))&&(!m||p.sale_mode===m)&&(!pub||(pub==='1'?p.published:!p.published));
+      card.style.display=ok?'':'none';
+    });
+  }
+  $('catAdminSearch').addEventListener('input',filter);$('catAdminMode').addEventListener('change',filter);$('catAdminPub').addEventListener('change',filter);
+}
+async function renderLevelAdmin(){
+  var el=$('catAdminLevels'); if(!el)return;
+  var members=await rest('vendor_level_members?select=*');
+  var mmap={};(members||[]).forEach(function(x){mmap[x.vendor_id]=x.level_id;});
+  el.innerHTML='<div class="catalog-head"><h3>等級與最低結帳金額</h3><button id="catAddLevel" class="btn secondary">新增等級</button></div><div id="catLevelRows" class="catalog-level-admin"></div><div class="catalog-block"><h3>廠商等級分配</h3><div class="catalog-vendor-levels">'+state.vendors.filter(function(v){return v.active;}).map(function(v){return '<div class="catalog-vendor-level-card"><b>'+esc(v.vendor_code)+' '+esc(v.name)+'</b><select data-cat-vlevel="'+v.id+'" style="width:100%;margin-top:7px">'+state.levels.map(function(l){return '<option value="'+l.id+'" '+(mmap[v.id]===l.id?'selected':'')+'>'+esc(l.name)+'</option>';}).join('')+'</select></div>';}).join('')+'</div></div>';
+  function paintRows(){
+    $('catLevelRows').innerHTML=state.levels.map(function(l){return '<div class="catalog-level-row" data-level-row="'+l.id+'"><label>代碼<input data-f="code" value="'+esc(l.code)+'"></label><label>名稱<input data-f="name" value="'+esc(l.name)+'"></label><label>最低結帳金額<input data-f="min_order_amount" type="number" min="0" value="'+esc(l.min_order_amount)+'"></label><button class="btn primary" data-save-level="'+l.id+'">儲存</button></div>';}).join('');
+    $('catLevelRows').querySelectorAll('[data-save-level]').forEach(function(b){b.addEventListener('click',async function(){
+      var row=b.closest('[data-level-row]'),id=b.dataset.saveLevel;
+      await rest('vendor_levels?id=eq.'+id,{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify({code:row.querySelector('[data-f=code]').value.trim(),name:row.querySelector('[data-f=name]').value.trim(),min_order_amount:Number(row.querySelector('[data-f=min_order_amount]').value||0),updated_at:new Date().toISOString()})});
+      b.textContent='已儲存';setTimeout(function(){b.textContent='儲存';},900);await loadCommonAdmin();
+    });});
+  }
+  paintRows();
+  $('catAddLevel').addEventListener('click',async function(){
+    var code=prompt('等級代碼，例如 B');if(!code)return;var name=prompt('等級名稱，例如 B級')||code;
+    await rest('vendor_levels',{method:'POST',headers:{Prefer:'return=minimal'},body:JSON.stringify({code:code.trim().toUpperCase(),name:name.trim(),min_order_amount:0,sort_order:state.levels.length*10+40})});
+    await loadCommonAdmin();renderLevelAdmin();
+  });
+  el.querySelectorAll('[data-cat-vlevel]').forEach(function(s){s.addEventListener('change',async function(){
+    await rest('vendor_level_members?on_conflict=vendor_id',{method:'POST',headers:{Prefer:'resolution=merge-duplicates,return=minimal'},body:JSON.stringify({vendor_id:s.dataset.catVlevel,level_id:s.value,updated_at:new Date().toISOString()})});
+  });});
+}
+function ensureProductModal(){
+  if($('catProductModal'))return;
+  var d=document.createElement('div');d.id='catProductModal';d.className='catalog-modal hidden';
+  d.innerHTML='<div class="catalog-modal-card"><div class="catalog-modal-head"><div><h2 id="catProductTitle">新增商品</h2><div class="muted">員工/管理員可刊登；圖片保留原始檔供廠商下載。</div></div><button class="catalog-close" data-cat-close>×</button></div><div id="catProductBody"></div><div id="catProductMsg" class="message"></div><div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px"><button class="btn ghost" data-cat-close>取消</button><button id="catSaveProduct" class="btn primary">儲存商品</button></div></div>';
+  document.body.appendChild(d);d.querySelectorAll('[data-cat-close]').forEach(function(x){x.addEventListener('click',function(){d.classList.add('hidden');});});$('catSaveProduct').addEventListener('click',saveProduct);
+}
+async function openProductEditor(id){
+  ensureProductModal();state.currentProduct=id?state.products.find(function(x){return x.id===id;}):null;
+  var p=state.currentProduct||{sale_mode:'preorder',base_price:0,min_order_qty:1,order_unit:'件',visibility_mode:'all',published:false,active:true};
+  var rs=id?await Promise.all([
+    rest('catalog_level_prices?select=*&product_id=eq.'+id),
+    rest('catalog_vendor_prices?select=*&product_id=eq.'+id),
+    rest('catalog_product_access?select=*&product_id=eq.'+id)
+  ]):[[],[],[]];
+  var lp=rs[0]||[],vp=rs[1]||[],ac=rs[2]||[];
+  $('catProductTitle').textContent=id?'編輯商品 '+p.product_code:'新增商品';
+  $('catProductBody').innerHTML='<div class="catalog-form-grid">'+
+    '<label>商品編號<input id="catPCode" maxlength="30" value="'+esc(p.product_code||'')+'"></label>'+
+    '<label class="span2">商品名稱<input id="catPName" value="'+esc(p.name||'')+'"></label>'+
+    '<label>出貨方<select id="catPFulfill">'+state.vendors.filter(function(v){return v.active;}).map(function(v){return '<option value="'+v.id+'" '+(p.fulfillment_vendor_id===v.id?'selected':'')+'>'+esc(v.vendor_code+' '+v.name)+'</option>';}).join('')+'</select></label>'+
+    '<label>販售模式<select id="catPMode"><option value="preorder" '+(p.sale_mode==='preorder'?'selected':'')+'>預購</option><option value="in_stock" '+(p.sale_mode==='in_stock'?'selected':'')+'>現貨</option></select></label>'+
+    '<label>一般批發價<input id="catPBase" type="number" min="0" step="0.01" value="'+esc(p.base_price||0)+'"></label>'+
+    '<label>最低訂購量<input id="catPMin" type="number" min="0.01" step="any" value="'+esc(p.min_order_qty||1)+'"></label>'+
+    '<label>單位<input id="catPUnit" value="'+esc(p.order_unit||'件')+'"></label>'+
+    '<label>包裝/箱入<input id="catPPack" value="'+esc(p.pack_text||'')+'" placeholder="例如 36罐/箱"></label>'+
+    '<label>開賣時間<input id="catPStart" type="datetime-local" value="'+esc(toLocalInput(p.sale_start_at))+'"></label>'+
+    '<label>結單時間<input id="catPEnd" type="datetime-local" value="'+esc(toLocalInput(p.sale_end_at))+'"></label>'+
+    '<label>預計出貨日<input id="catPShip" type="date" value="'+esc(p.expected_ship_date||'')+'"></label>'+
+    '<label>販售對象<select id="catPVisibility"><option value="all" '+(p.visibility_mode==='all'?'selected':'')+'>全部廠商</option><option value="restricted" '+(p.visibility_mode==='restricted'?'selected':'')+'>指定等級/廠商</option></select></label>'+
+    '<label><input id="catPPublished" type="checkbox" '+(p.published?'checked':'')+' style="width:auto"> 立即上架</label>'+
+    '<label><input id="catPActive" type="checkbox" '+(p.active!==false?'checked':'')+' style="width:auto"> 商品啟用</label>'+
+    '<label class="full">商品文案<textarea id="catPDesc">'+esc(p.description||'')+'</textarea></label>'+
+    '</div>'+
+    '<div class="catalog-block"><h3>等級價格</h3><div class="catalog-level-prices">'+state.levels.map(function(l){var x=lp.find(function(z){return z.level_id===l.id;});return '<label>'+esc(l.name)+' 價<input data-cat-level-price="'+l.id+'" type="number" min="0" step="0.01" value="'+(x?esc(x.price):'')+'" placeholder="空白＝一般批發價"></label>';}).join('')+'</div></div>'+
+    '<div class="catalog-block"><div class="catalog-head"><h3>廠商專屬價</h3><button id="catAddVendorPrice" class="btn secondary" type="button">＋新增</button></div><div id="catVendorPriceRows">'+vp.map(vendorPriceRow).join('')+'</div></div>'+
+    '<div class="catalog-block"><h3>指定販售對象</h3><p class="muted">販售對象選「指定等級/廠商」時才生效。</p><b>等級</b><div class="catalog-checkbox-list">'+state.levels.map(function(l){return '<label><input type="checkbox" data-cat-access-level="'+l.id+'" '+(ac.some(function(a){return a.level_id===l.id;})?'checked':'')+'> '+esc(l.name)+'</label>';}).join('')+'</div><b style="display:block;margin-top:10px">個別廠商</b><div class="catalog-checkbox-list">'+state.vendors.filter(function(v){return v.active;}).map(function(v){return '<label><input type="checkbox" data-cat-access-vendor="'+v.id+'" '+(ac.some(function(a){return a.vendor_id===v.id;})?'checked':'')+'> '+esc(v.vendor_code+' '+v.name)+'</label>';}).join('')+'</div></div>'+
+    '<div class="catalog-block"><h3>規格/SKU</h3><p class="muted">每行：SKU｜款式名稱｜加價｜最低量。只填名稱也可以。</p><textarea id="catPVariants" style="width:100%;min-height:110px">'+esc(variantsText(id))+'</textarea></div>'+
+    '<div class="catalog-block"><h3>商品圖片（可多張）</h3><input id="catPImages" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple><div class="muted" style="margin:6px 0">每張上限 20MB；下載時保留原始上傳檔。</div><div id="catExistingImages" class="catalog-image-list">'+renderImageAdmin(id)+'</div></div>';
+  $('catAddVendorPrice').addEventListener('click',function(){$('catVendorPriceRows').insertAdjacentHTML('beforeend',vendorPriceRow(null));bindVendorPriceRemove();});
+  bindVendorPriceRemove();bindImageAdmin();
+  $('catProductModal').classList.remove('hidden');
+}
+function toLocalInput(v){if(!v)return '';var d=new Date(v),off=d.getTimezoneOffset();return new Date(d.getTime()-off*60000).toISOString().slice(0,16);}
+function variantsText(id){return getVariants(id).map(function(v){return [v.sku_code||'',v.name||'',v.price_delta||0,v.min_order_qty||''].join('｜');}).join('\n');}
+function vendorPriceRow(x){
+  x=x||{};return '<div class="catalog-vendor-price-row"><label class="wide">廠商<select data-vp-vendor>'+state.vendors.filter(function(v){return v.active;}).map(function(v){return '<option value="'+v.id+'" '+(x.vendor_id===v.id?'selected':'')+'>'+esc(v.vendor_code+' '+v.name)+'</option>';}).join('')+'</select></label><label>專屬價<input data-vp-price type="number" min="0" step="0.01" value="'+(x.price!=null?esc(x.price):'')+'"></label><label>最低量<input data-vp-min type="number" min="0" step="any" value="'+(x.min_order_qty!=null?esc(x.min_order_qty):'')+'"></label><button type="button" class="btn ghost" data-vp-remove>移除</button></div>';
+}
+function bindVendorPriceRemove(){$('catVendorPriceRows').querySelectorAll('[data-vp-remove]').forEach(function(b){b.onclick=function(){b.closest('.catalog-vendor-price-row').remove();};});}
+function renderImageAdmin(id){
+  if(!id)return '';return state.images.filter(function(x){return x.product_id===id;}).map(function(im){return '<div class="catalog-image-item" data-img="'+im.id+'"><img src="'+esc(publicImage(im.storage_path))+'"><div title="'+esc(im.original_filename)+'" style="font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(im.original_filename)+'</div><div class="catalog-image-actions"><button class="btn ghost" data-img-dl="'+im.id+'">原圖</button><button class="btn ghost" data-img-del="'+im.id+'">刪除</button></div></div>';}).join('');
+}
+function bindImageAdmin(){
+  $('catExistingImages').querySelectorAll('[data-img-dl]').forEach(function(b){b.onclick=function(){var im=state.images.find(function(x){return x.id===b.dataset.imgDl;});if(im)downloadImage(im);};});
+  $('catExistingImages').querySelectorAll('[data-img-del]').forEach(function(b){b.onclick=async function(){var im=state.images.find(function(x){return x.id===b.dataset.imgDel;});if(!im||!confirm('刪除這張圖片？'))return;await deleteImage(im);state.images=state.images.filter(function(x){return x.id!==im.id;});b.closest('.catalog-image-item').remove();};});
+}
+async function deleteImage(im){
+  var path=im.storage_path.split('/').map(encodeURIComponent).join('/');
+  var res=await authFetch(SB+'/storage/v1/object/catalog-images/'+path,{method:'DELETE'});
+  if(!res.ok&&res.status!==404){var t=await res.text();throw new Error(t||'圖片刪除失敗');}
+  await rest('catalog_product_images?id=eq.'+im.id,{method:'DELETE'});
+}
+function parseVariants(txt){
+  return String(txt||'').split(/\r?\n/).map(function(x){return x.trim();}).filter(Boolean).map(function(line,i){
+    var a=line.split(/[｜|]/).map(function(x){return x.trim();});
+    if(a.length===1)return {sku_code:null,name:a[0],price_delta:0,min_order_qty:null,sort_order:i+1,active:true};
+    return {sku_code:a[0]||null,name:a[1]||a[0],price_delta:Number(a[2]||0),min_order_qty:a[3]?Number(a[3]):null,sort_order:i+1,active:true};
+  });
+}
+async function saveProduct(){
+  var msg=$('catProductMsg'),save=$('catSaveProduct');save.disabled=true;save.textContent='儲存中…';msg.textContent='';
+  try{
+    var payload={product_code:$('catPCode').value.trim(),name:$('catPName').value.trim(),description:$('catPDesc').value.trim()||null,fulfillment_vendor_id:$('catPFulfill').value,sale_mode:$('catPMode').value,base_price:Number($('catPBase').value||0),min_order_qty:Number($('catPMin').value||1),order_unit:$('catPUnit').value.trim()||'件',pack_text:$('catPPack').value.trim()||null,sale_start_at:$('catPStart').value?new Date($('catPStart').value).toISOString():null,sale_end_at:$('catPEnd').value?new Date($('catPEnd').value).toISOString():null,expected_ship_date:$('catPShip').value||null,visibility_mode:$('catPVisibility').value,published:$('catPPublished').checked,active:$('catPActive').checked,updated_at:new Date().toISOString()};
+    if(!payload.product_code||!payload.name)throw new Error('商品編號與商品名稱必填');
+    var pid;
+    if(state.currentProduct){
+      await rest('catalog_products?id=eq.'+state.currentProduct.id,{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify(payload)});pid=state.currentProduct.id;
+    }else{
+      payload.created_by=sess().user.id;var rr=await rest('catalog_products',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify(payload)});pid=rr[0].id;
+    }
+    await Promise.all([
+      rest('catalog_variants?product_id=eq.'+pid,{method:'DELETE'}),
+      rest('catalog_level_prices?product_id=eq.'+pid,{method:'DELETE'}),
+      rest('catalog_vendor_prices?product_id=eq.'+pid,{method:'DELETE'}),
+      rest('catalog_product_access?product_id=eq.'+pid,{method:'DELETE'})
+    ]);
+    var vars=parseVariants($('catPVariants').value);if(vars.length)await rest('catalog_variants',{method:'POST',body:JSON.stringify(vars.map(function(x){x.product_id=pid;return x;}))});
+    var lps=[];document.querySelectorAll('[data-cat-level-price]').forEach(function(inp){if(inp.value!=='')lps.push({product_id:pid,level_id:inp.dataset.catLevelPrice,price:Number(inp.value)});});if(lps.length)await rest('catalog_level_prices',{method:'POST',body:JSON.stringify(lps)});
+    var vps=[];document.querySelectorAll('#catVendorPriceRows .catalog-vendor-price-row').forEach(function(r){var p=r.querySelector('[data-vp-price]').value;if(p!=='')vps.push({product_id:pid,vendor_id:r.querySelector('[data-vp-vendor]').value,price:Number(p),min_order_qty:r.querySelector('[data-vp-min]').value?Number(r.querySelector('[data-vp-min]').value):null});});if(vps.length)await rest('catalog_vendor_prices',{method:'POST',body:JSON.stringify(vps)});
+    if(payload.visibility_mode==='restricted'){
+      var acc=[];document.querySelectorAll('[data-cat-access-level]:checked').forEach(function(x){acc.push({product_id:pid,level_id:x.dataset.catAccessLevel});});document.querySelectorAll('[data-cat-access-vendor]:checked').forEach(function(x){acc.push({product_id:pid,vendor_id:x.dataset.catAccessVendor});});if(acc.length)await rest('catalog_product_access',{method:'POST',body:JSON.stringify(acc)});
+    }
+    var files=Array.from($('catPImages').files||[]);for(var i=0;i<files.length;i++)await uploadImage(pid,files[i],i);
+    msg.textContent='儲存完成';msg.className='message success';await loadCommonAdmin();renderAdminProducts();setTimeout(function(){$('catProductModal').classList.add('hidden');},500);
+  }catch(e){msg.textContent='儲存失敗：'+e.message;msg.className='message error';}
+  finally{save.disabled=false;save.textContent='儲存商品';}
+}
+async function uploadImage(pid,file,idx){
+  if(file.size>20*1024*1024)throw new Error(file.name+' 超過 20MB');
+  var safe=file.name.replace(/[^A-Za-z0-9._-]+/g,'_'),path=pid+'/'+Date.now()+'-'+Math.random().toString(36).slice(2,8)+'-'+safe;
+  var res=await authFetch(SB+'/storage/v1/object/catalog-images/'+path.split('/').map(encodeURIComponent).join('/'),{method:'POST',headers:{'Content-Type':file.type||'application/octet-stream','x-upsert':'false'},body:file});
+  if(!res.ok)throw new Error(file.name+' 上傳失敗：'+await res.text());
+  await rest('catalog_product_images',{method:'POST',body:JSON.stringify({product_id:pid,storage_path:path,original_filename:file.name,mime_type:file.type||null,file_size_bytes:file.size,sort_order:(state.images.filter(function(x){return x.product_id===pid;}).length+idx+1),created_by:sess().user.id})});
+}
+
+function ensureVendorUI(){
+  if($('catalogVendorNav'))return;
+  var view=$('vendorView'),card=view&&view.querySelector('.card.section-card');if(!card)return;
+  var nav=document.createElement('div');nav.id='catalogVendorNav';nav.className='catalog-vendor-nav';nav.innerHTML='<button class="active" data-cat-vtab="shipping">出貨追蹤</button><button data-cat-vtab="store">批發賣場</button><button data-cat-vtab="cart">購物車 <span id="catCartCount"></span></button><button data-cat-vtab="purchases">我的採購</button>';
+  var first=card.querySelector('.section-head');card.insertBefore(nav,first);
+  var wrap=document.createElement('div');wrap.id='catalogVendorArea';wrap.className='hidden';card.appendChild(wrap);
+  nav.querySelectorAll('[data-cat-vtab]').forEach(function(b){b.addEventListener('click',function(){switchVendorTab(b.dataset.catVtab,b);});});
+}
+async function switchVendorTab(tab,b){
+  var card=$('vendorView').querySelector('.card.section-card'),head=card.querySelector(':scope > .section-head'),orders=$('vendorOrders'),area=$('catalogVendorArea');
+  document.querySelectorAll('#catalogVendorNav button').forEach(function(x){x.classList.toggle('active',x===b);});
+  var shipping=tab==='shipping';head.classList.toggle('hidden',!shipping);orders.classList.toggle('hidden',!shipping);area.classList.toggle('hidden',shipping);
+  if(shipping)return;
+  if(tab==='store')await renderStore();if(tab==='cart')await renderCart();if(tab==='purchases')await renderPurchases();
+}
+async function renderStore(){
+  var area=$('catalogVendorArea');area.innerHTML='<div class="catalog-empty">載入商品中…</div>';await loadStorefront();
+  area.innerHTML='<div class="catalog-store-wrap"><div class="catalog-store-toolbar"><input id="catStoreSearch" placeholder="搜尋商品編號、名稱"><select id="catStoreMode"><option value="">全部</option><option value="in_stock">現貨</option><option value="preorder">預購</option></select><button id="catRefreshStore" class="btn ghost">重新整理</button></div><div id="catStoreGrid" class="catalog-grid"></div></div>';paintStore();
+  $('catStoreSearch').addEventListener('input',paintStore);$('catStoreMode').addEventListener('change',paintStore);$('catRefreshStore').addEventListener('click',renderStore);
+}
+function paintStore(){
+  var grid=$('catStoreGrid');if(!grid)return;var q=($('catStoreSearch').value||'').toLowerCase(),mode=$('catStoreMode').value;
+  var list=state.products.filter(function(p){return (!q||(p.product_code+' '+p.name).toLowerCase().indexOf(q)>=0)&&(!mode||p.sale_mode===mode);});
+  grid.innerHTML=list.map(function(p){var im=firstImage(p.id),s=saleState(p),open=saleOpen(p);return '<div class="catalog-card" data-store-product="'+p.id+'"><div class="catalog-card-img">'+(im?'<img src="'+esc(publicImage(im.storage_path))+'">':'<span class="muted">尚無圖片</span>')+'</div><div class="catalog-card-body"><div class="catalog-code">'+esc(p.product_code)+'</div><div class="catalog-name">'+esc(p.name)+'</div><div class="catalog-price">'+money(p.effective_price)+'</div><div class="catalog-meta"><span class="catalog-pill '+(s==='現貨'?'good':'warn')+'">'+esc(s)+'</span><span class="catalog-pill">最低 '+esc(p.effective_min_order_qty)+' '+esc(p.order_unit)+'</span>'+(p.sale_end_at?'<span class="catalog-pill">結單 '+esc(fmtDate(p.sale_end_at))+'</span>':'')+'</div><div class="catalog-card-actions"><button class="btn secondary" data-store-view="'+p.id+'">查看商品</button><button class="btn primary" data-store-quick="'+p.id+'" '+(open?'':'disabled')+'>加入購物車</button></div></div></div>';}).join('')||'<div class="catalog-empty">目前沒有可購買商品。</div>';
+  grid.querySelectorAll('[data-store-view]').forEach(function(b){b.onclick=function(){openStoreDetail(b.dataset.storeView);};});
+  grid.querySelectorAll('[data-store-quick]').forEach(function(b){b.onclick=function(){openStoreDetail(b.dataset.storeQuick,true);};});
+}
+function ensureStoreModal(){
+  if($('catStoreModal'))return;var d=document.createElement('div');d.id='catStoreModal';d.className='catalog-modal hidden';d.innerHTML='<div class="catalog-modal-card"><div class="catalog-modal-head"><h2 id="catStoreTitle">商品</h2><button class="catalog-close" data-store-close>×</button></div><div id="catStoreDetail"></div></div>';document.body.appendChild(d);d.querySelector('[data-store-close]').onclick=function(){d.classList.add('hidden');};
+}
+function openStoreDetail(id,focusQty){
+  ensureStoreModal();var p=state.products.find(function(x){return x.id===id;});if(!p)return;var imgs=state.images.filter(function(x){return x.product_id===id;}).sort(function(a,b){return (a.sort_order||0)-(b.sort_order||0);}),vars=getVariants(id),main=imgs[0];
+  $('catStoreTitle').textContent=p.product_code+' '+p.name;
+  $('catStoreDetail').innerHTML='<div class="catalog-product-detail"><div><img id="catMainImg" class="catalog-main-image" src="'+esc(main?publicImage(main.storage_path):'')+'">'+(imgs.length?'<div class="catalog-thumbs">'+imgs.map(function(im){return '<button data-thumb="'+im.id+'"><img src="'+esc(publicImage(im.storage_path))+'"></button>';}).join('')+'</div><div class="catalog-download-row"><button id="catDownloadCurrent" class="btn ghost">下載目前原圖</button><button id="catDownloadAll" class="btn secondary">下載全部原圖 ('+imgs.length+')</button></div>':'<div class="catalog-empty">尚無商品圖片</div>')+'</div><div><div class="catalog-price">'+money(p.effective_price)+'</div><div class="catalog-meta"><span class="catalog-pill">'+esc(saleState(p))+'</span><span class="catalog-pill">最低 '+esc(p.effective_min_order_qty)+' '+esc(p.order_unit)+'</span>'+(p.pack_text?'<span class="catalog-pill">'+esc(p.pack_text)+'</span>':'')+'</div><p style="white-space:pre-wrap;line-height:1.7">'+esc(p.description||'')+'</p>'+(p.expected_ship_date?'<p><b>預計出貨：</b>'+esc(p.expected_ship_date)+'</p>':'')+(vars.length?'<label>款式<select id="catBuyVariant" style="width:100%;margin-top:5px">'+vars.map(function(v){return '<option value="'+v.id+'" data-delta="'+v.price_delta+'" data-min="'+(v.min_order_qty||'')+'">'+esc(v.name)+(Number(v.price_delta)?'（'+(Number(v.price_delta)>0?'+':'')+money(v.price_delta)+'）':'')+'</option>';}).join('')+'</select></label>':'')+'<label style="display:block;margin-top:10px">數量<input id="catBuyQty" type="number" min="'+esc(p.effective_min_order_qty)+'" step="any" value="'+esc(p.effective_min_order_qty)+'" style="width:100%;margin-top:5px"></label><button id="catAddCart" class="btn primary wide" style="margin-top:12px" '+(saleOpen(p)?'':'disabled')+'>加入購物車</button><div id="catStoreMsg" class="message"></div></div></div>';
+  var selected=main;
+  document.querySelectorAll('[data-thumb]').forEach(function(b){b.onclick=function(){selected=imgs.find(function(x){return x.id===b.dataset.thumb;});$('catMainImg').src=publicImage(selected.storage_path);};});
+  if($('catDownloadCurrent'))$('catDownloadCurrent').onclick=function(){if(selected)downloadImage(selected);};
+  if($('catDownloadAll'))$('catDownloadAll').onclick=async function(){for(var i=0;i<imgs.length;i++){await downloadImage(imgs[i]);await new Promise(function(r){setTimeout(r,250);});}};
+  if($('catBuyVariant'))$('catBuyVariant').onchange=function(){var op=this.selectedOptions[0],mn=Number(op.dataset.min||p.effective_min_order_qty);$('catBuyQty').min=mn;if(Number($('catBuyQty').value)<mn)$('catBuyQty').value=mn;};
+  $('catAddCart').onclick=async function(){var m=$('catStoreMsg');try{this.disabled=true;await rpc('catalog_add_to_cart',{p_product_id:p.id,p_variant_id:$('catBuyVariant')?$('catBuyVariant').value:null,p_quantity:Number($('catBuyQty').value)});m.textContent='已加入購物車';m.className='message success';await updateCartCount();}catch(e){m.textContent=e.message;m.className='message error';}finally{this.disabled=false;}};
+  $('catStoreModal').classList.remove('hidden');if(focusQty)setTimeout(function(){$('catBuyQty').focus();},100);
+}
+async function downloadImage(im){
+  try{
+    var res=await fetch(publicImage(im.storage_path));if(!res.ok)throw new Error('下載失敗');var blob=await res.blob(),u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download=im.original_filename||'image';document.body.appendChild(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(u);},2000);
+  }catch(e){window.open(publicImage(im.storage_path),'_blank');}
+}
+async function updateCartCount(){
+  if(!isVendor()||!$('catCartCount'))return;try{var rows=await rpc('catalog_get_cart',{});$('catCartCount').textContent=rows&&rows.length?'('+rows.length+')':'';}catch(e){}
+}
+async function renderCart(){
+  var area=$('catalogVendorArea');area.innerHTML='<div class="catalog-empty">載入購物車…</div>';var rows=await rpc('catalog_get_cart',{}),total=(rows||[]).reduce(function(s,x){return s+Number(x.line_total||0);},0);
+  var lev=await loadMyLevel(),min=lev?Number(lev.min_order_amount||0):0;
+  area.innerHTML='<div class="card inner-card"><h2>購物車</h2><div class="catalog-cart-list">'+((rows||[]).map(function(x){return '<div class="catalog-cart-row"><img src="'+esc(x.image_path?publicImage(x.image_path):'')+'"><div><b>'+esc(x.product_code)+' '+esc(x.product_name)+'</b><div class="muted">'+esc(x.variant_name||'')+'</div></div><div class="qty">'+esc(x.quantity)+' '+esc(x.order_unit)+'</div><div class="price">'+money(x.line_total)+'</div><button class="btn ghost" data-cart-del="'+x.cart_item_id+'">移除</button></div>';}).join('')||'<div class="catalog-empty">購物車是空的。</div>')+'</div><div class="catalog-cart-total">合計 '+money(total)+'</div>'+(min>0?'<div class="muted" style="text-align:right">此等級最低結帳金額 '+money(min)+(total<min?'，尚差 '+money(min-total):'，已達門檻')+'</div>':'')+((rows||[]).length?'<div class="catalog-block"><h3>收貨資料</h3><div class="catalog-checkout-grid"><label>收貨人<input id="catCheckoutReceiver" value="'+esc(localStorage.getItem('catalog_receiver')||'')+'"></label><label>電話<input id="catCheckoutPhone" value="'+esc(localStorage.getItem('catalog_phone')||'')+'"></label><label class="full">地址<input id="catCheckoutAddress" value="'+esc(localStorage.getItem('catalog_address')||'')+'"></label><label class="full">備註<textarea id="catCheckoutNote"></textarea></label></div><button id="catCheckoutBtn" class="btn primary wide" style="margin-top:10px" '+(total<min?'disabled':'')+'>確認送出訂單</button><div id="catCheckoutMsg" class="message"></div></div>':'')+'</div>';
+  area.querySelectorAll('[data-cart-del]').forEach(function(b){b.onclick=async function(){await rpc('catalog_remove_cart_item',{p_item_id:b.dataset.cartDel});renderCart();updateCartCount();};});
+  if($('catCheckoutBtn'))$('catCheckoutBtn').onclick=async function(){var m=$('catCheckoutMsg');try{this.disabled=true;var r=$('catCheckoutReceiver').value.trim(),ph=$('catCheckoutPhone').value.trim(),ad=$('catCheckoutAddress').value.trim(),note=$('catCheckoutNote').value.trim();localStorage.setItem('catalog_receiver',r);localStorage.setItem('catalog_phone',ph);localStorage.setItem('catalog_address',ad);var out=await rpc('catalog_checkout',{p_receiver:r,p_phone:ph,p_address:ad,p_note:note||null});var orders=out.orders||[];m.textContent='下單完成：'+orders.map(function(x){return x.order_no+'（'+x.supplier+'）';}).join('、');m.className='message success';await updateCartCount();setTimeout(renderPurchases,800);}catch(e){m.textContent='結帳失敗：'+e.message;m.className='message error';this.disabled=false;}};
+}
+async function loadMyLevel(){
+  try{var m=await rest('vendor_level_members?select=level_id&vendor_id=eq.'+state.profile.vendor_id);if(!m.length)return null;var l=await rest('vendor_levels?select=*&id=eq.'+m[0].level_id);return l[0]||null;}catch(e){return null;}
+}
+async function renderPurchases(){
+  var area=$('catalogVendorArea');var rows=await rest('orders?select=id,tracking_id,order_date,status,order_total,source_shipper_text,expected_deadline,created_at&buyer_vendor_id=eq.'+state.profile.vendor_id+'&order=created_at.desc&limit=100');
+  area.innerHTML='<div class="card inner-card"><h2>我的採購</h2>'+((rows||[]).map(function(o){return '<div class="catalog-myorder"><b>ORD-'+String(o.tracking_id).padStart(6,'0')+'</b><span class="catalog-pill" style="margin-left:8px">'+esc(o.status)+'</span><div class="muted">下單 '+esc(o.order_date)+'｜出貨方 '+esc(o.source_shipper_text||'—')+'｜預計 '+esc(o.expected_deadline||'—')+'</div><div style="font-weight:800;margin-top:4px">'+money(o.order_total)+'</div></div>';}).join('')||'<div class="catalog-empty">尚無網站採購訂單。</div>')+'</div>';
+}
+
+function showErr(e){console.error(e);alert('商城功能發生錯誤：'+e.message);}
+async function activate(){
+  try{
+    await loadProfile();if(!state.profile)return;
+    if(isManager()){ensureAdminTab();}
+    if(isVendor()){ensureVendorUI();updateCartCount();}
+  }catch(e){console.warn('catalog init',e);}
+}
+function observeLoginViews(){
+  ['adminView','vendorView'].forEach(function(id){var el=$(id);if(!el)return;new MutationObserver(function(ms){ms.forEach(function(m){if(m.attributeName==='class'&&!el.classList.contains('hidden'))activate();});}).observe(el,{attributes:true,attributeFilter:['class']});});
+}
+document.addEventListener('DOMContentLoaded',function(){activate();observeLoginViews();});
+})();
