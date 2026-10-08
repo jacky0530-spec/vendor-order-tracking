@@ -122,6 +122,7 @@
     $('loginView').classList.remove('hidden');
     $('adminView').classList.add('hidden');
     $('vendorView').classList.add('hidden');
+    const cv = $('customerView'); if (cv) cv.classList.add('hidden');
     $('logoutBtn').classList.add('hidden');
     $('identity').textContent = '';
   }
@@ -129,16 +130,26 @@
   async function showLoggedIn() {
     $('loginView').classList.add('hidden');
     $('logoutBtn').classList.remove('hidden');
-    const roleName = profile.role === 'admin' ? '管理員' : profile.role === 'employee' ? '員工' : '廠商';
+    const roleName = profile.role === 'admin' ? '管理員' : profile.role === 'employee' ? '員工' : profile.role === 'customer' ? '客戶' : '出貨廠商';
     $('identity').textContent = `${profile.display_name || profile.login_name} · ${roleName}`;
+    const cv = $('customerView');
     if (profile.role === 'admin' || profile.role === 'employee') {
       $('adminView').classList.remove('hidden');
       $('vendorView').classList.add('hidden');
+      if (cv) cv.classList.add('hidden');
       await loadAdmin();
-    } else {
+    } else if (profile.role === 'vendor') {
       $('adminView').classList.add('hidden');
       $('vendorView').classList.remove('hidden');
+      if (cv) cv.classList.add('hidden');
       await loadVendor();
+    } else if (profile.role === 'customer') {
+      $('adminView').classList.add('hidden');
+      $('vendorView').classList.add('hidden');
+      if (cv) cv.classList.remove('hidden');
+      window.dispatchEvent(new CustomEvent('customer-view-shown'));
+    } else {
+      throw new Error('帳號角色設定錯誤');
     }
   }
 
