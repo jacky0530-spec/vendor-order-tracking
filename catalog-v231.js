@@ -264,9 +264,32 @@ async function openProductEditor(id){
     '<div class="catalog-block"><h3>等級價格</h3><div class="catalog-level-prices">'+state.levels.map(function(l){var x=lp.find(function(z){return z.level_id===l.id;});return '<label>'+esc(l.name)+' 價<input data-cat-level-price="'+l.id+'" type="number" min="0" step="0.01" value="'+(x?esc(x.price):'')+'" placeholder="空白＝一般批發價"></label>';}).join('')+'</div></div>'+
     '<div class="catalog-block"><div class="catalog-head"><h3>客戶專屬價</h3><button id="catAddVendorPrice" class="btn secondary" type="button">＋新增</button></div><div id="catVendorPriceRows">'+vp.map(vendorPriceRow).join('')+'</div></div>'+
     '<div class="catalog-block"><h3>指定販售對象</h3><p class="muted">販售對象選「指定等級/客戶」時才生效。</p><b>等級</b><div class="catalog-checkbox-list">'+state.levels.map(function(l){return '<label><input type="checkbox" data-cat-access-level="'+l.id+'" '+(ac.some(function(a){return a.level_id===l.id;})?'checked':'')+'> '+esc(l.name)+'</label>';}).join('')+'</div><b style="display:block;margin-top:10px">個別客戶</b><div class="catalog-checkbox-list">'+state.customers.filter(function(v){return v.active;}).map(function(v){return '<label><input type="checkbox" data-cat-access-customer="'+v.id+'" '+(ac.some(function(a){return a.customer_id===v.id;})?'checked':'')+'> '+esc(v.customer_code+' '+v.name)+'</label>';}).join('')+'</div></div>'+
-    '<div class="catalog-block"><h3>規格/SKU</h3><p class="muted">每行：SKU｜款式名稱｜加價｜最低量。只填名稱也可以。</p><textarea id="catPVariants" style="width:100%;min-height:110px">'+esc(variantsText(id))+'</textarea></div>'+
+    '<div class="catalog-block"><h3>多層規格組合</h3><p class="muted">每行一層規格，例如：尺寸｜單人,雙人 或 顏色｜白色,灰色。最多三層，產生後可在下方逐筆修改 SKU、加價及最低量。</p><textarea id="catPDimensions" style="width:100%;min-height:85px" placeholder="尺寸｜單人,雙人\n顏色｜白色,灰色"></textarea><button id="catGenerateVariants" type="button" class="btn secondary">產生全部組合 SKU</button><div id="catDimensionMsg" class="muted"></div></div>'+ 
+    '<div class="catalog-block"><h3>規格/SKU 明細</h3><p class="muted">每行：SKU｜款式名稱｜加價｜最低量；多層規格名稱以「尺寸：單人／顏色：白色」保存。已有規格可繼續手動修改。</p><textarea id="catPVariants" style="width:100%;min-height:110px">'+esc(variantsText(id))+'</textarea></div>'+
     '<div class="catalog-block"><h3>商品圖片（可多張）</h3><input id="catPImages" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple><div class="muted" style="margin:6px 0">每張上限 20MB；下載時保留原始上傳檔。</div><div id="catExistingImages" class="catalog-image-list">'+renderImageAdmin(id)+'</div></div>';
   $('catAddVendorPrice').addEventListener('click',function(){$('catVendorPriceRows').insertAdjacentHTML('beforeend',vendorPriceRow(null));bindVendorPriceRemove();});
+  $('catGenerateVariants').onclick=function(){
+    try{
+      var lines=$('catPDimensions').value.split(/\r?\n/).map(function(x){return x.trim();}).filter(Boolean);
+      if(!lines.length||lines.length>3)throw new Error('請輸入 1～3 層規格');
+      var dimensions=lines.map(function(line){
+        var cut=line.indexOf('｜');if(cut<0)cut=line.indexOf('|');
+        if(cut<1)throw new Error('規格格式：尺寸｜單人,雙人');
+        var title=line.slice(0,cut).trim(),vals=line.slice(cut+1).split(/[,，、]/).map(function(x){return x.trim();}).filter(Boolean);
+        if(!vals.length||new Set(vals).size!==vals.length)throw new Error(title+' 選項為空或重複');
+        return {name:title,values:vals};
+      });
+      if(new Set(dimensions.map(function(x){return x.name;})).size!==dimensions.length)throw new Error('規格層名稱不得重複');
+      var combos=[[]];dimensions.forEach(function(d){var next=[];combos.forEach(function(c){d.values.forEach(function(v){next.push(c.concat([{name:d.name,value:v}]));});});combos=next;});
+      if(combos.length>150)throw new Error('最多產生 150 組 SKU，請減少選項');
+      var existing=parseVariants($('catPVariants').value);
+      var existingNames=new Map(existing.map(function(x){return [x.name,x];}));
+      var base=($('catPCode').value.trim()||'SKU').replace(/[^a-zA-Z0-9_-]/g,'').slice(0,20);
+      var rows=combos.map(function(c,i){var name=c.map(function(x){return x.name+'：'+x.value;}).join('／'),old=existingNames.get(name);return [old&&old.sku_code||base+'-'+String(i+1).padStart(3,'0'),name,old?old.price_delta:0,old&&old.min_order_qty!=null?old.min_order_qty:''].join('｜');});
+      var ta=$('catPVariants');if(ta.value.trim()&&!confirm('將以產生的組合取代下方 SKU 明細；同名組合會保留原本加價與最低量。確定繼續？'))return;
+      ta.value=rows.join('\n');$('catDimensionMsg').textContent='已產生 '+rows.length+' 組 SKU，請確認後按「儲存商品」';
+    }catch(e){$('catDimensionMsg').textContent='無法產生：'+e.message;}
+  };
   bindVendorPriceRemove();bindImageAdmin();
   $('catProductModal').classList.remove('hidden');
 }
