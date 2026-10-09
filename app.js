@@ -422,7 +422,8 @@
   }
 
   function bindEvents() {
-    $('loginBtn').addEventListener('click', async () => {
+    $('loginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
       try {
         setMessage('loginMsg','登入中…');
         session = await login($('loginName').value, $('loginPassword').value);
@@ -435,7 +436,7 @@
         setMessage('loginMsg', e.message, 'error');
       }
     });
-    $('loginPassword').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('loginBtn').click(); });
+
     $('logoutBtn').addEventListener('click', () => { clearSession(); location.reload(); });
     $('setupBtn').addEventListener('click', async () => {
       const password = $('setupPassword').value;
