@@ -119,7 +119,7 @@
   }
 
   function showLoggedOut() {
-    const brand = document.getElementById('appBrand'); if (brand) brand.textContent = '廠商訂單追蹤系統';
+    const brand = document.getElementById('appBrand'); if (brand) brand.textContent = '宜羿企業系統';
     $('loginView').classList.remove('hidden');
     $('adminView').classList.add('hidden');
     $('vendorView').classList.add('hidden');
