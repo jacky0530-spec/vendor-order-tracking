@@ -259,7 +259,7 @@ async function openProductEditor(id){
   $('catProductBody').innerHTML='<div class="catalog-form-grid">'+
     '<label>商品編號<input id="catPCode" maxlength="30" value="'+esc(p.product_code||'')+'"></label>'+
     '<label class="span2">商品名稱<input id="catPName" value="'+esc(p.name||'')+'"></label>'+
-    '<label>出貨方<select id="catPFulfill">'+state.vendors.filter(function(v){return v.active;}).map(function(v){return '<option value="'+v.id+'" '+(p.fulfillment_vendor_id===v.id?'selected':'')+'>'+esc(v.vendor_code+' '+v.name)+'</option>';}).join('')+'</select></label>'+
+    '<label>出貨方<select id="catPFulfill">'+state.vendors.filter(function(v){return v.active;}).map(function(v){return '<option value="'+v.id+'" '+((p.fulfillment_vendor_id||(!id?'ba4326fc-b7a4-4b87-a16c-316c0f121eec':null))===v.id?'selected':'')+'>'+esc(v.vendor_code+' '+v.name)+'</option>';}).join('')+'</select></label>'+
     '<label>販售模式<select id="catPMode"><option value="preorder" '+(p.sale_mode==='preorder'?'selected':'')+'>預購</option><option value="in_stock" '+(p.sale_mode==='in_stock'?'selected':'')+'>現貨</option></select></label>'+
     '<label>一般批發價<input id="catPBase" type="number" min="0" step="0.01" value="'+esc(p.base_price||0)+'"></label>'+
     '<label>最低訂購量<input id="catPMin" type="number" min="0.01" step="any" value="'+esc(p.min_order_qty||1)+'"></label>'+
