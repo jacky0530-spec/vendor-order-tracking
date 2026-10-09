@@ -7,10 +7,19 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
-  <title>廠商訂單追蹤系統 V2.33</title>
+  <title>廠商訂單追蹤系統 V2.34</title>
   <link rel="stylesheet" href="./styles.css?build=229-stable1">
   <link rel="stylesheet" href="./vendor-spacing.css?build=229-stable1">
   <link rel="stylesheet" href="./catalog-v230.css?build=231">
+<style>
+/* 角色畫面決定客戶專屬品牌，避免重新整理／登入還原時漏掉。 */
+body:has(#customerView:not(.hidden)) #appBrand { font-size: 0; }
+body:has(#customerView:not(.hidden)) #appBrand::after {
+  content: "宜羿企業B2B商城";
+  font-size: 18px;
+  font-weight: 700;
+}
+</style>
 </head>
 <body>
 <header class="topbar">
@@ -178,7 +187,7 @@
   </section>
 </main>
 
-<footer>Vendor Order Tracking V2.33</footer>
+<footer>Vendor Order Tracking V2.34</footer>
 
 <script src="./config.js?build=229-stable1"></script>
 <script src="./app.js?build=233-customerbrand1"></script>
