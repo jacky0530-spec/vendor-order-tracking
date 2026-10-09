@@ -79,7 +79,7 @@ function ensureAdminTab(){
   var nav=document.querySelector('#adminView .tabs'); if(!nav)return;
   var b=document.createElement('button');b.className='tab';b.dataset.tab='catalog';b.textContent='批發商城';nav.appendChild(b);
   var panel=document.createElement('div');panel.id='tab-catalog';panel.className='tab-panel hidden';
-  panel.innerHTML='<div class="card section-card"><div class="catalog-head"><div><h2>批發商城</h2><p class="muted">商品指定出貨廠商；價格、權限與購物車以客戶為主。</p></div><button id="catNewProduct" class="btn primary" type="button">＋新增商品</button></div><div class="catalog-subnav"><button class="active" data-cat-admin="products">商品管理</button><button data-cat-admin="customers">客戶資料</button><button data-cat-admin="levels">客戶等級</button><button data-cat-admin="preview">客戶視角預覽</button></div><div id="catAdminProducts"></div><div id="catAdminCustomers" class="hidden"></div><div id="catAdminLevels" class="hidden"></div><div id="catAdminPreview" class="hidden"></div></div>';
+  panel.innerHTML='<div class="card section-card"><div class="catalog-head"><div><h2>批發商城</h2><p class="muted">商品指定出貨廠商；價格、權限與購物車以客戶為主。</p></div><button id="catNewProduct" class="btn primary" type="button">＋新增商品</button></div><div class="catalog-subnav"><button class="active" data-cat-admin="products">商品管理</button><button data-cat-admin="customers">客戶資料</button><button data-cat-admin="levels">客戶等級</button><button data-cat-admin="preview">客戶視角預覽</button><button data-cat-admin="requests">客戶採購單</button></div><div id="catAdminProducts"></div><div id="catAdminCustomers" class="hidden"></div><div id="catAdminLevels" class="hidden"></div><div id="catAdminPreview" class="hidden"></div><div id="catAdminRequests" class="hidden"></div></div>';
   document.querySelector('#adminView').appendChild(panel);
   b.addEventListener('click',function(){
     document.querySelectorAll('#adminView .tab').forEach(function(x){x.classList.toggle('active',x===b);});
@@ -93,6 +93,8 @@ function ensureAdminTab(){
     $('catAdminCustomers').classList.toggle('hidden',x.dataset.catAdmin!=='customers');
     $('catAdminLevels').classList.toggle('hidden',x.dataset.catAdmin!=='levels');
     $('catAdminPreview').classList.toggle('hidden',x.dataset.catAdmin!=='preview');
+    $('catAdminRequests').classList.toggle('hidden',x.dataset.catAdmin!=='requests');
+    if(x.dataset.catAdmin==='requests')renderAdminPurchaseRequests().catch(showErr);
     if(x.dataset.catAdmin==='preview')renderAdminCustomerPreview().catch(showErr);
     if(x.dataset.catAdmin==='customers')renderCustomerAdmin();
     if(x.dataset.catAdmin==='levels')renderLevelAdmin();
@@ -422,14 +424,43 @@ async function renderCart(){
   area.innerHTML='<div class="card inner-card"><h2>購物車</h2><div class="catalog-cart-list">'+((rows||[]).map(function(x){return '<div class="catalog-cart-row"><img src="'+esc(x.image_path?publicImage(x.image_path):'')+'"><div><b>'+esc(x.product_code)+' '+esc(x.product_name)+'</b><div class="muted">'+esc(x.variant_name||'')+'</div></div><div class="qty">'+esc(x.quantity)+' '+esc(x.order_unit)+'</div><div class="price">'+money(x.unit_price)+'/單位｜小計 '+money(x.line_total)+'</div><button class="btn ghost" data-cart-del="'+x.cart_item_id+'">移除</button></div>';}).join('')||'<div class="catalog-empty">購物車是空的。</div>')+'</div><div class="catalog-cart-total">合計 '+money(total)+'</div>'+(min>0?'<div class="muted" style="text-align:right">此客戶等級最低結帳金額 '+money(min)+(total<min?'，尚差 '+money(min-total):'，已達門檻')+'</div>':'')+((rows||[]).length?'<div class="catalog-block"><h3>收貨資料</h3><label>選擇地址<select id="catCheckoutAddressId" style="width:100%;margin-top:5px"><option value="">＋本次新增收貨資料</option>'+addresses.map(function(a){return '<option value="'+a.id+'" '+(a.is_default?'selected':'')+'>'+esc((a.is_default?'★ ':'')+(a.receiver_name||'')+'｜'+(a.phone||'')+'｜'+(a.address||''))+'</option>';}).join('')+'</select></label><div id="catCheckoutNew" class="catalog-checkout-grid"><label>收貨人<input id="catCheckoutReceiver"></label><label>電話<input id="catCheckoutPhone"></label><label class="full">地址<input id="catCheckoutAddress"></label></div><label class="full">備註<textarea id="catCheckoutNote" style="width:100%"></textarea></label><button id="catCheckoutBtn" class="btn primary wide" style="margin-top:10px" '+(total<min?'disabled':'')+'>確認送出訂單</button><div id="catCheckoutMsg" class="message"></div></div>':'')+'</div>';
   area.querySelectorAll('[data-cart-del]').forEach(function(b){b.onclick=async function(){await rpc('catalog_remove_cart_item',{p_item_id:b.dataset.cartDel});renderCart();updateCartCount();};});
   if($('catCheckoutAddressId')){function toggleNew(){$('catCheckoutNew').classList.toggle('hidden',!!$('catCheckoutAddressId').value);}$('catCheckoutAddressId').onchange=toggleNew;toggleNew();}
-  if($('catCheckoutBtn'))$('catCheckoutBtn').onclick=async function(){var m=$('catCheckoutMsg');try{this.disabled=true;var aid=$('catCheckoutAddressId').value||null,r=$('catCheckoutReceiver')?$('catCheckoutReceiver').value.trim():null,ph=$('catCheckoutPhone')?$('catCheckoutPhone').value.trim():null,ad=$('catCheckoutAddress')?$('catCheckoutAddress').value.trim():null,note=$('catCheckoutNote').value.trim();if(!aid&&(!r||!ph||!ad))throw new Error('新增收貨資料請完整填寫收貨人、電話與地址');var out=await rpc('catalog_checkout',{p_customer_address_id:aid,p_receiver:aid?null:r,p_phone:aid?null:ph,p_address:aid?null:ad,p_note:note||null});var orders=out.orders||[];m.textContent='下單完成：'+orders.map(function(x){return x.order_no;}).join('、');m.className='message success';await updateCartCount();setTimeout(renderPurchases,800);}catch(e){m.textContent='結帳失敗：'+e.message;m.className='message error';this.disabled=false;}};
+  if($('catCheckoutBtn'))$('catCheckoutBtn').onclick=async function(){var m=$('catCheckoutMsg');try{this.disabled=true;var aid=$('catCheckoutAddressId').value||null,r=$('catCheckoutReceiver')?$('catCheckoutReceiver').value.trim():null,ph=$('catCheckoutPhone')?$('catCheckoutPhone').value.trim():null,ad=$('catCheckoutAddress')?$('catCheckoutAddress').value.trim():null,note=$('catCheckoutNote').value.trim();if(!aid&&(!r||!ph||!ad))throw new Error('新增收貨資料請完整填寫收貨人、電話與地址');var out=await rpc('catalog_submit_purchase',{p_customer_address_id:aid,p_receiver:aid?null:r,p_phone:aid?null:ph,p_address:aid?null:ad,p_note:note||null});m.textContent='採購單 '+out.request_no+' 已送出，等待管理員確認。';m.className='message success';await updateCartCount();setTimeout(renderPurchases,800);}catch(e){m.textContent='結帳失敗：'+e.message;m.className='message error';this.disabled=false;}};
 }
 async function loadMyLevel(){
   try{var m=await rest('customer_level_members?select=level_id&customer_id=eq.'+state.profile.customer_id);if(!m.length)return null;var l=await rest('customer_levels?select=*&id=eq.'+m[0].level_id);return l[0]||null;}catch(e){return null;}
 }
+async function renderAdminPurchaseRequests(){
+  var el=$('catAdminRequests');if(!el||!isManager())return;
+  el.innerHTML='<div class="catalog-empty">正在載入待審核採購單…</div>';
+  var rs=await Promise.all([
+    rest('customer_purchase_requests?select=*&order=created_at.desc&limit=200'),
+    rest('customer_purchase_request_items?select=*&order=sort_order.asc')
+  ]);
+  var requests=rs[0]||[],items=rs[1]||[];
+  el.innerHTML='<div class="catalog-head"><h3>客戶採購單審核</h3><button class="btn ghost" id="catRequestReload">重新整理</button></div><p class="muted">核准後才正式建立 ORD 並通知指定出貨廠商；退回則不建立訂單。</p>'+
+    (requests.map(function(r){
+      var its=items.filter(function(x){return x.request_id===r.id;});
+      var status=r.status==='pending'?'待確認':r.status==='approved'?'已轉正式訂單':'已退回';
+      return '<div class="catalog-myorder"><div class="catalog-head"><div><b>PUR-'+String(r.request_no).padStart(6,'0')+'</b>｜'+esc(r.buyer)+'｜'+esc(status)+'</div><b>'+money(r.total)+'</b></div>'+
+      '<div class="muted">送出 '+esc(fmtDate(r.created_at))+'｜收貨：'+esc(r.receiver)+' '+esc(r.receiver_phone||'')+' '+esc(r.receiver_address||'')+'</div>'+
+      its.map(function(i){return '<div>'+esc(i.product_code)+' '+esc(i.product_name)+' '+esc(i.variant_name||'')+' × '+esc(i.quantity)+' '+esc(i.order_unit||'')+'｜'+money(i.line_total)+'</div>';}).join('')+
+      (r.note?'<div class="muted">備註：'+esc(r.note)+'</div>':'')+
+      (r.status==='pending'?'<div style="display:flex;gap:8px;margin-top:9px"><button class="btn primary" data-purchase-approve="'+r.id+'">確認並轉訂單</button><button class="btn ghost" data-purchase-reject="'+r.id+'">退回採購單</button></div>':'<div class="muted">'+(r.status==='approved'?'正式訂單：'+esc((r.order_numbers||[]).join('、')):'退回原因：'+esc(r.review_note||'—'))+'</div>')+'</div>';
+    }).join('')||'<div class="catalog-empty">沒有客戶採購單。</div>');
+  $('catRequestReload').onclick=renderAdminPurchaseRequests;
+  el.querySelectorAll('[data-purchase-approve],[data-purchase-reject]').forEach(function(b){b.onclick=async function(){
+    var approval=!!b.dataset.purchaseApprove,id=b.dataset.purchaseApprove||b.dataset.purchaseReject;
+    if(!confirm(approval?'確認後將建立正式 ORD 並交由廠商出貨，確定？':'確定退回這份採購單？'))return;
+    var note=approval?null:prompt('請輸入退回原因');if(!approval&&note===null)return;
+    b.disabled=true;
+    try{await rpc('catalog_review_purchase',{p_request_id:id,p_approve:approval,p_note:note||null});await renderAdminPurchaseRequests();}
+    catch(e){alert('審核失敗：'+e.message);b.disabled=false;}
+  };});
+}
+
 async function renderPurchases(){
-  var area=$('catalogCustomerArea');var rows=await rest('orders?select=id,tracking_id,order_date,status,order_total,source_shipper_text,expected_deadline,created_at,receiver,receiver_address&customer_id=eq.'+state.profile.customer_id+'&order=created_at.desc&limit=100');
-  area.innerHTML='<div class="card inner-card"><h2>我的採購</h2>'+((rows||[]).map(function(o){return '<div class="catalog-myorder"><b>ORD-'+String(o.tracking_id).padStart(6,'0')+'</b><span class="catalog-pill" style="margin-left:8px">'+esc(({vendor_unconfirmed:'訂單處理中',vendor_confirmed:'訂單已確認',new:'訂單處理中',preparing:'備貨中',shipped:'已出貨',completed:'已完成',cancelled:'已取消',out_of_stock:'暫時缺貨',delayed:'出貨延後'})[o.status]||'訂單處理中')+'</span><div class="muted">下單 '+esc(o.order_date)+'｜預計 '+esc(o.expected_deadline||'—')+'</div><div class="muted">收貨：'+esc(o.receiver||'—')+' '+esc(o.receiver_address||'')+'</div><div style="font-weight:800;margin-top:4px">'+money(o.order_total)+'</div></div>';}).join('')||'<div class="catalog-empty">尚無網站採購訂單。</div>')+'</div>';
+  var area=$('catalogCustomerArea');var pending=await rest('customer_purchase_requests?select=*&customer_id=eq.'+state.profile.customer_id+'&order=created_at.desc&limit=100');var rows=await rest('orders?select=id,tracking_id,order_date,status,order_total,source_shipper_text,expected_deadline,created_at,receiver,receiver_address&customer_id=eq.'+state.profile.customer_id+'&order=created_at.desc&limit=100');
+  area.innerHTML='<div class="card inner-card"><h2>我的採購</h2>'+((pending||[]).map(function(p){return '<div class="catalog-myorder"><b>PUR-'+String(p.request_no).padStart(6,'0')+'</b>｜'+esc(p.status==='pending'?'等待確認':p.status==='approved'?'已確認，訂單處理中':'已退回')+'<div class="muted">'+esc(fmtDate(p.created_at))+'｜收貨：'+esc(p.receiver)+'</div><b>'+money(p.total)+'</b>'+(p.status==='rejected'?'<div class="muted">'+esc(p.review_note||'')+'</div>':'')+'</div>';}).join(''))+((rows||[]).map(function(o){return '<div class="catalog-myorder"><b>ORD-'+String(o.tracking_id).padStart(6,'0')+'</b><span class="catalog-pill" style="margin-left:8px">'+esc(({vendor_unconfirmed:'訂單處理中',vendor_confirmed:'訂單已確認',new:'訂單處理中',preparing:'備貨中',shipped:'已出貨',completed:'已完成',cancelled:'已取消',out_of_stock:'暫時缺貨',delayed:'出貨延後'})[o.status]||'訂單處理中')+'</span><div class="muted">下單 '+esc(o.order_date)+'｜預計 '+esc(o.expected_deadline||'—')+'</div><div class="muted">收貨：'+esc(o.receiver||'—')+' '+esc(o.receiver_address||'')+'</div><div style="font-weight:800;margin-top:4px">'+money(o.order_total)+'</div></div>';}).join('')||'<div class="catalog-empty">尚無網站採購訂單。</div>')+'</div>';
 }
 async function renderCustomerAddresses(){
   var area=$('catalogCustomerArea'),rows=await rest('customer_addresses?select=*&customer_id=eq.'+state.profile.customer_id+'&active=eq.true&order=is_default.desc,last_used_at.desc');
