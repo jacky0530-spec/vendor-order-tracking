@@ -465,8 +465,44 @@ async function renderAdminPurchaseRequests(){
 }
 
 async function renderPurchases(){
-  var area=$('catalogCustomerArea');var pending=await rest('customer_purchase_requests?select=*&customer_id=eq.'+state.profile.customer_id+'&order=created_at.desc&limit=100');var rows=await rest('orders?select=id,tracking_id,order_date,status,order_total,source_shipper_text,expected_deadline,created_at,receiver,receiver_address&customer_id=eq.'+state.profile.customer_id+'&order=created_at.desc&limit=100');
-  area.innerHTML='<div class="card inner-card"><h2>我的採購</h2>'+((pending||[]).map(function(p){return '<div class="catalog-myorder"><b>PUR-'+String(p.request_no).padStart(6,'0')+'</b>｜'+esc(p.status==='pending'?'等待確認':p.status==='approved'?'已確認，訂單處理中':'已退回')+'<div class="muted">'+esc(fmtDate(p.created_at))+'｜收貨：'+esc(p.receiver)+'</div><b>'+money(p.total)+'</b>'+(p.status==='rejected'?'<div class="muted">'+esc(p.review_note||'')+'</div>':'')+'</div>';}).join(''))+((rows||[]).map(function(o){return '<div class="catalog-myorder"><b>ORD-'+String(o.tracking_id).padStart(6,'0')+'</b><span class="catalog-pill" style="margin-left:8px">'+esc(({vendor_unconfirmed:'訂單處理中',vendor_confirmed:'訂單已確認',new:'訂單處理中',preparing:'備貨中',shipped:'已出貨',completed:'已完成',cancelled:'已取消',out_of_stock:'暫時缺貨',delayed:'出貨延後'})[o.status]||'訂單處理中')+'</span><div class="muted">下單 '+esc(o.order_date)+'｜預計 '+esc(o.expected_deadline||'—')+'</div><div class="muted">收貨：'+esc(o.receiver||'—')+' '+esc(o.receiver_address||'')+'</div><div style="font-weight:800;margin-top:4px">'+money(o.order_total)+'</div></div>';}).join('')||'<div class="catalog-empty">尚無網站採購訂單。</div>')+'</div>';
+  var area=$('catalogCustomerArea');area.innerHTML='<div class="catalog-empty">正在載入採購紀錄…</div>';
+  var result=await Promise.all([
+    rest('customer_purchase_requests?select=*&customer_id=eq.'+state.profile.customer_id+'&order=created_at.desc&limit=100'),
+    rest('orders?select=id,tracking_id,order_date,status,order_total,expected_deadline,created_at,receiver,receiver_address&customer_id=eq.'+state.profile.customer_id+'&order=created_at.desc&limit=100')
+  ]);
+  var purchases=result[0]||[],orders=result[1]||[];
+  function summary(type,id,number,status,date,total,receiver,extra){
+    return '<details class="catalog-myorder" data-detail-type="'+type+'" data-detail-id="'+esc(id)+'" style="margin-bottom:9px"><summary style="cursor:pointer;list-style:none;padding:5px 0"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><div><b>'+esc(number)+'</b> <span class="catalog-pill">'+esc(status)+'</span><div class="muted">'+esc(date)+'｜收貨：'+esc(receiver||'—')+'</div><b>'+money(total)+'</b></div><span style="font-size:13px;color:#087e77">查看明細 ▾</span></div></summary><div class="catalog-purchase-detail" style="border-top:1px solid #ddd;margin-top:9px;padding-top:10px">'+(extra||'')+'<div class="muted">展開後載入商品明細…</div></div></details>';
+  }
+  var html=purchases.map(function(p){
+    return summary('PUR',p.id,'PUR-'+String(p.request_no).padStart(6,'0'),p.status==='pending'?'等待確認':p.status==='approved'?'已確認':'已退回',fmtDate(p.created_at),p.total,p.receiver,p.status==='rejected'?'<div class="muted">退回原因：'+esc(p.review_note||'—')+'</div>':'');
+  }).join('')+orders.map(function(o){
+    var status=({vendor_unconfirmed:'訂單處理中',vendor_confirmed:'訂單已確認',new:'訂單處理中',preparing:'備貨中',shipped:'已出貨',completed:'已完成',cancelled:'已取消',out_of_stock:'暫時缺貨',delayed:'出貨延後'})[o.status]||'訂單處理中';
+    return summary('ORD',o.id,'ORD-'+String(o.tracking_id).padStart(6,'0'),status,'下單 '+o.order_date+'｜預計 '+(o.expected_deadline||'—'),o.order_total,o.receiver);
+  }).join('');
+  area.innerHTML='<div class="card inner-card"><h2>我的採購</h2><p class="muted">點選採購單或訂單，即可展開商品、規格、數量與金額。</p>'+(html||'<div class="catalog-empty">尚無採購紀錄。</div>')+'</div>';
+  area.querySelectorAll('details[data-detail-id]').forEach(function(d){
+    d.addEventListener('toggle',async function(){
+      if(!d.open||d.dataset.loaded==='1'||d.dataset.loading==='1')return;
+      d.dataset.loading='1';var target=d.querySelector('.catalog-purchase-detail');
+      try{
+        var kind=d.dataset.detailType,table=kind==='PUR'?'customer_purchase_request_items':'order_items',col=kind==='PUR'?'request_id':'order_id';
+        var lines=await rest(table+'?select=*&'+col+'=eq.'+encodeURIComponent(d.dataset.detailId)+'&order=sort_order.asc');
+        var total=0,quant=0;
+        var trs=(lines||[]).map(function(x){
+          var code=x.product_code||'',name=x.product_name||'',variant=kind==='PUR'?x.variant_name:x.variant;
+          var qty=Number(x.quantity||0),unit=kind==='PUR'?x.order_unit:x.quantity_unit;
+          var price=Number(x.unit_price||0),subtotal=x.line_total!=null?Number(x.line_total):price*qty;
+          total+=subtotal;quant+=qty;
+          return '<tr style="border-bottom:1px solid #e2e8f0"><td style="padding:8px">'+esc(code)+'</td><td style="padding:8px">'+esc(name)+'</td><td style="padding:8px">'+esc(variant||'—')+'</td><td style="padding:8px;text-align:right;white-space:nowrap"><b>'+esc(qty)+'</b> '+esc(unit||'')+'</td><td style="padding:8px;text-align:right">'+money(price)+'</td><td style="padding:8px;text-align:right"><b>'+money(subtotal)+'</b></td></tr>';
+        }).join('');
+        target.innerHTML='<div style="overflow-x:auto"><table style="width:100%;min-width:600px;border-collapse:collapse;font-size:13px"><thead><tr style="background:#f1f5f9"><th>貨號</th><th>商品名稱</th><th>規格／顏色</th><th>數量</th><th>單價</th><th>小計</th></tr></thead><tbody>'+trs+'</tbody></table></div><div style="text-align:right;font-weight:700;margin-top:10px">共 '+(lines||[]).length+' 項｜總數量 '+quant+'｜商品小計 '+money(total)+'</div>';
+        if(!lines||!lines.length)target.innerHTML='<div class="muted">這筆紀錄目前沒有商品明細。</div>';
+        d.dataset.loaded='1';
+      }catch(e){target.innerHTML='<div class="message error">明細載入失敗：'+esc(e.message)+'，請收合後再展開重試。</div>';}
+      finally{d.dataset.loading='';}
+    });
+  });
 }
 async function renderCustomerAddresses(){
   var area=$('catalogCustomerArea'),rows=await rest('customer_addresses?select=*&customer_id=eq.'+state.profile.customer_id+'&active=eq.true&order=is_default.desc,last_used_at.desc');
