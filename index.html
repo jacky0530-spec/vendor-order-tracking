@@ -113,6 +113,19 @@
     <div id="tab-vendors" class="tab-panel hidden">
       <div class="card section-card">
         <div class="section-head"><div><h2>廠商設定與帳號</h2><p class="muted">新出貨方由 LINE 自動建立廠商；這裡可設定預設交期並建立或重設帳號。</p></div></div>
+        <div class="card inner-card" style="margin-bottom:14px">
+          <h3>＋手動新增出貨廠商</h3>
+          <p class="muted">管理員及小幫手可新增，系統自動產生 Vxxxx 編號；新增後可於下方建立廠商登入帳號。</p>
+          <div class="filters">
+            <label>廠商名稱（必填）<input id="newVendorName" maxlength="100" placeholder="請輸入廠商名稱"></label>
+            <label>聯絡人<input id="newVendorContact" placeholder="聯絡人姓名"></label>
+            <label>電話<input id="newVendorPhone" placeholder="聯絡電話"></label>
+            <label>電子郵件<input id="newVendorEmail" type="email" placeholder="選填"></label>
+            <label>預設交期（天）<input id="newVendorLead" type="number" min="0" max="365" value="14"></label>
+          </div>
+          <button id="createVendorBtn" type="button" class="btn primary">新增出貨廠商</button>
+          <div id="createVendorMsg" class="message" role="status"></div>
+        </div>
         <div id="credentialBox"></div>
         <div id="vendorCards" class="vendor-grid"></div>
       </div>
@@ -168,7 +181,7 @@
 <footer>Vendor Order Tracking V2.31</footer>
 
 <script src="./config.js?build=229-stable1"></script>
-<script src="./app.js?build=231"></script>
+<script src="./app.js?build=231-vendorcreate1"></script>
 <script src="./shipping-reports.js?build=229-stable1"></script>
 <script src="./item-shipping-v2.js?build=229-stable1"></script>
 <script src="./cross-order-shipping.js?build=229-stable1"></script>
