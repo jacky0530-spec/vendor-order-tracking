@@ -183,7 +183,7 @@ async function renderCustomerAdmin(){
   ]);
   var members=rs[0]||[],addresses=rs[1]||[],profiles=rs[2]||[],mmap={},pmap={};
   members.forEach(function(x){mmap[x.customer_id]=x.level_id;});profiles.forEach(function(x){pmap[x.customer_id]=x;});
-  el.innerHTML='<div class="catalog-toolbar"><input id="catCustomerSearch" placeholder="搜尋客戶編號、名稱、收貨人、地址"><select id="catCustomerLevelFilter"><option value="">全部等級</option>'+state.levels.map(function(l){return '<option value="'+l.id+'">'+esc(l.name)+'</option>';}).join('')+'</select><button id="catCustomerRefresh" class="btn ghost">重新整理</button></div><div id="catCustomerRows"></div>';
+  el.innerHTML='<div class="card inner-card" style="margin-bottom:14px"><h3>＋手動新增客戶</h3><p class="muted">管理員與小幫手可新增，客戶編號 Cxxxx 自動產生；新增後可直接建立登入帳號。</p><div class="catalog-form-grid"><label>客戶名稱（必填）<input id="catNewCustomerName" maxlength="100" placeholder="公司、商店或客戶名稱"></label><label>聯絡人<input id="catNewCustomerContact" placeholder="聯絡人姓名"></label><label>聯絡電話<input id="catNewCustomerPhone" placeholder="電話"></label><label>電子郵件<input id="catNewCustomerEmail" type="email" placeholder="選填"></label><label>收貨人<input id="catNewCustomerReceiver" placeholder="選填"></label><label class="span2">預設收貨地址<input id="catNewCustomerAddress" placeholder="選填；可日後從地址簿新增"></label><label class="span2">備註<input id="catNewCustomerNotes" placeholder="選填"></label></div><button id="catCreateCustomer" type="button" class="btn primary">新增客戶</button><div id="catCreateCustomerMsg" class="message" role="status"></div></div><div class="catalog-toolbar"><input id="catCustomerSearch" placeholder="搜尋客戶編號、名稱、收貨人、地址"><select id="catCustomerLevelFilter"><option value="">全部等級</option>'+state.levels.map(function(l){return '<option value="'+l.id+'">'+esc(l.name)+'</option>';}).join('')+'</select><button id="catCustomerRefresh" class="btn ghost">重新整理</button></div><div id="catCustomerRows"></div>';
   function paint(){
     var q=($('catCustomerSearch').value||'').toLowerCase(),lf=$('catCustomerLevelFilter').value;
     var list=state.customers.filter(function(c){
@@ -198,6 +198,18 @@ async function renderCustomerAdmin(){
     $('catCustomerRows').querySelectorAll('[data-customer-addresses]').forEach(function(x){x.onclick=function(){openCustomerAddresses(x.dataset.customerAddresses,addresses);};});
     $('catCustomerRows').querySelectorAll('[data-customer-account]').forEach(function(x){x.onclick=async function(){x.disabled=true;try{var d=await edge({action:'customer_account',customer_id:x.dataset.customerAccount});alert('客戶帳號：'+d.username+'\n初始/重設密碼：'+d.password+'\n首次登入後請修改密碼。');await renderCustomerAdmin();}catch(e){alert('帳號處理失敗：'+e.message);}finally{x.disabled=false;}};});
   }
+  $('catCreateCustomer').onclick=async function(){
+    var b=this,m=$('catCreateCustomerMsg'),name=$('catNewCustomerName').value.trim();
+    if(!name){m.textContent='請先填寫客戶名稱';return;}
+    try{
+      b.disabled=true;m.textContent='正在新增客戶…';
+      var data=await edge({action:'customer_create',name:name,contact_name:$('catNewCustomerContact').value.trim(),phone:$('catNewCustomerPhone').value.trim(),email:$('catNewCustomerEmail').value.trim(),receiver_name:$('catNewCustomerReceiver').value.trim(),address:$('catNewCustomerAddress').value.trim(),notes:$('catNewCustomerNotes').value.trim()});
+      await loadCommonAdmin();await renderCustomerAdmin();
+      var notice=$('catCreateCustomerMsg');
+      if(notice)notice.textContent='已建立 '+data.customer.customer_code+' '+data.customer.name+'。可從下方清單點選「建立帳號」。'+(data.warning?' 注意：'+data.warning:'');
+    }catch(e){m.textContent='新增失敗：'+e.message;}
+    finally{b.disabled=false;}
+  };
   paint();$('catCustomerSearch').oninput=paint;$('catCustomerLevelFilter').onchange=paint;$('catCustomerRefresh').onclick=renderCustomerAdmin;
 }
 function openCustomerAddresses(customerId,addresses){
