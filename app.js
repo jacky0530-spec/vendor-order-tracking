@@ -119,6 +119,7 @@
   }
 
   function showLoggedOut() {
+    const brand = document.getElementById('appBrand'); if (brand) brand.textContent = '廠商訂單追蹤系統';
     $('loginView').classList.remove('hidden');
     $('adminView').classList.add('hidden');
     $('vendorView').classList.add('hidden');
@@ -128,6 +129,7 @@
   }
 
   async function showLoggedIn() {
+    const brand = document.getElementById('appBrand'); if (brand) brand.textContent = profile?.role === 'customer' ? '宜羿企業B2B商城' : '廠商訂單追蹤系統';
     $('loginView').classList.add('hidden');
     $('logoutBtn').classList.remove('hidden');
     const roleName = profile.role === 'admin' ? '管理員' : profile.role === 'employee' ? '員工' : profile.role === 'customer' ? '客戶' : '出貨廠商';
