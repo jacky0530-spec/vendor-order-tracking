@@ -33,13 +33,31 @@ async function signedPhoto(path){
  var r=await req('/storage/v1/object/sign/ng-ticket-photos/'+path.split('/').map(encodeURIComponent).join('/'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({expiresIn:300})});
  if(!r.ok)return '';var d=await r.json();return S+'/storage/v1'+d.signedURL;
 }
-async function upload(tid,msgId,file){
- if(!/^image\/(jpeg|png|webp)$/.test(file.type)||file.size>10*1024*1024)throw Error('僅接受 JPG、PNG、WebP，單張不超過 10MB');
- var extension=file.type==='image/png'?'png':file.type==='image/webp'?'webp':'jpg';
- var path=tid+'/'+crypto.randomUUID()+'.'+extension;
+async function durationOf(file){
+ return new Promise(function(resolve,reject){
+  var url=URL.createObjectURL(file),video=document.createElement('video'),done=false;
+  function finish(error,value){if(done)return;done=true;video.removeAttribute('src');video.load();URL.revokeObjectURL(url);if(error)reject(error);else resolve(value);}
+  video.preload='metadata';
+  video.onloadedmetadata=function(){var d=video.duration;if(!Number.isFinite(d)||d<=0)finish(Error('無法確認影片長度，請使用 MP4 或 WebM'));else finish(null,d);};
+  video.onerror=function(){finish(Error('影片無法讀取，請轉成 MP4 再試'));};
+  video.src=url;
+ });
+}
+async function validateMedia(file){
+ var images=['image/jpeg','image/png','image/webp'],videos=['video/mp4','video/webm','video/quicktime'];
+ if(images.includes(file.type)){if(file.size>10*1024*1024)throw Error('照片每張不得超過 10MB');return {seconds:null,ext:file.type==='image/png'?'png':file.type==='image/webp'?'webp':'jpg'};}
+ if(!videos.includes(file.type))throw Error('僅支援 JPG、PNG、WebP 圖片及 MP4、MOV、WebM 影片');
+ if(file.size>50*1024*1024)throw Error('影片檔案不得超過 50MB');
+ var d=await durationOf(file);
+ if(d>30)throw Error('影片長度不得超過 30 秒（目前 '+Math.ceil(d)+' 秒）');
+ return {seconds:d,ext:file.type==='video/mp4'?'mp4':file.type==='video/quicktime'?'mov':'webm'};
+}
+async function upload(tid,msgId,file,validated){
+ var media=validated||await validateMedia(file);
+ var path=tid+'/'+crypto.randomUUID()+'.'+media.ext;
  var r=await req('/storage/v1/object/ng-ticket-photos/'+path,{method:'POST',headers:{'Content-Type':file.type,'x-upsert':'false'},body:file});
- if(!r.ok)throw Error('圖片上傳失敗');
- await api('ng_photos',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ticket_id:tid,message_id:msgId||null,storage_path:path,filename:file.name})});
+ if(!r.ok){var info=await r.text();throw Error('附件上傳失敗：'+info);}
+ await api('ng_photos',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ticket_id:tid,message_id:msgId||null,storage_path:path,filename:file.name,mime_type:file.type,video_duration_seconds:media.seconds})});
 }
 async function render(mode,container){
  var root=$(container);if(!root)return;root.innerHTML='<div class="catalog-empty">載入 NG 問題單…</div>';
@@ -47,7 +65,7 @@ async function render(mode,container){
   var tickets=await api('ng_tickets?select=*&order=created_at.desc&limit=150');
   var profile=mode==='customer'?await api('user_profiles?select=customer_id&user_id=eq.'+session().user.id):[];
   root.innerHTML='<div class="catalog-head"><h3>NG 商品問題單</h3><button class="btn ghost" id="ngReload">重新整理</button></div>'+
-   (mode==='customer'?'<div class="card inner-card"><h3>提出商品問題</h3><div class="catalog-form-grid"><label>問題主旨<input id="ngSubject" placeholder="例如：手套破損"></label><label>商品貨號<input id="ngCode" placeholder="例如 9605"></label><label>訂單／採購單編號<input id="ngOrder" placeholder="選填"></label><label class="span2">問題說明<textarea id="ngDesc" rows="3" placeholder="請描述商品、數量及瑕疵情況"></textarea></label><label class="span2">照片（可多張，每張 10MB 以下）<input id="ngNewFiles" type="file" accept="image/jpeg,image/png,image/webp" multiple></label></div><button class="btn primary" id="ngCreate">送出問題單</button><div id="ngCreateMsg" class="message"></div></div>':'<p class="muted">可查看所有客戶問題、回覆多次處理進度、更新案件狀態。</p>')+
+   (mode==='customer'?'<div class="card inner-card"><h3>提出商品問題</h3><div class="catalog-form-grid"><label>問題主旨<input id="ngSubject" placeholder="例如：手套破損"></label><label>商品貨號<input id="ngCode" placeholder="例如 9605"></label><label>訂單／採購單編號<input id="ngOrder" placeholder="選填"></label><label class="span2">問題說明<textarea id="ngDesc" rows="3" placeholder="請描述商品、數量及瑕疵情況"></textarea></label><label class="span2">照片／影片（影片 30 秒內、50MB 以下；照片每張 10MB 以下）<input id="ngNewFiles" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime,video/webm" multiple></label></div><button class="btn primary" id="ngCreate">送出問題單</button><div id="ngCreateMsg" class="message"></div></div>':'<p class="muted">可查看所有客戶問題、回覆多次處理進度、更新案件狀態。</p>')+
    (tickets.map(function(t){return '<div class="catalog-myorder"><div class="catalog-head"><div><b>NG-'+String(t.ticket_number).padStart(6,'0')+'｜'+esc(t.subject)+'</b><div class="muted">'+esc(badge(t.status))+'｜'+esc(time(t.created_at))+'｜商品 '+esc(t.product_code||'—')+'｜'+esc(t.order_reference||'')+'</div></div><button class="btn secondary" data-ng-open="'+t.id+'">查看與回覆</button></div><div>'+esc(t.description)+'</div><div id="ngThread-'+t.id+'"></div></div>';}).join('')||'<div class="catalog-empty">尚無 NG 問題單。</div>');
   $('ngReload').onclick=function(){render(mode,container);};
   root.querySelectorAll('[data-ng-open]').forEach(function(b){b.onclick=function(){openThread(mode,b.dataset.ngOpen);};});
@@ -56,10 +74,12 @@ async function render(mode,container){
    if(!sub||!desc){msg.textContent='請填寫主旨與問題說明';return;}
    btn.disabled=true;msg.textContent='正在送出…';
    try{
+    var candidateFiles=Array.from($('ngNewFiles').files||[]),validated=[];
+    for(var mediaFile of candidateFiles)validated.push(await validateMedia(mediaFile));
     var row=await api('ng_tickets',{method:'POST',headers:{'Content-Type':'application/json',Prefer:'return=representation'},body:JSON.stringify({customer_id:profile[0].customer_id,subject:sub,description:desc,product_code:$('ngCode').value.trim()||null,order_reference:$('ngOrder').value.trim()||null})});
     var files=Array.from($('ngNewFiles').files||[]);var errors=[];
-    for(var f of files){try{await upload(row[0].id,null,f);}catch(e){errors.push(f.name+': '+e.message);}}
-    if(errors.length)alert('問題單已建立，但部分照片未上傳：\n'+errors.join('\n'));
+    for(var k=0;k<files.length;k++){try{await upload(row[0].id,null,files[k],validated[k]);}catch(e){errors.push(files[k].name+': '+e.message);}}
+    if(errors.length)alert('問題單已建立，但部分附件未上傳：\n'+errors.join('\n'));
     await render(mode,container);
    }catch(e){msg.textContent=e.message;btn.disabled=false;}
   };
@@ -67,21 +87,21 @@ async function render(mode,container){
 }
 async function openThread(mode,id){
  var el=$('ngThread-'+id);if(!el)return;if(el.dataset.open==='1'){el.innerHTML='';el.dataset.open='';return;}el.dataset.open='1';
- el.innerHTML='<p class="muted">載入留言與照片…</p>';
+ el.innerHTML='<p class="muted">載入留言與附件…</p>';
  try{
   var out=await Promise.all([api('ng_messages?select=*&ticket_id=eq.'+id+'&order=created_at.asc'),api('ng_photos?select=*&ticket_id=eq.'+id+'&order=created_at.asc'),api('ng_tickets?select=*&id=eq.'+id)]);
   var msgs=out[0],photos=out[1],ticket=out[2][0];
   var pictureMap={};await Promise.all(photos.map(async function(p){pictureMap[p.id]=await signedPhoto(p.storage_path);}));
-  function imgs(messageId){return photos.filter(function(p){return p.message_id===messageId;}).map(function(p){var url=pictureMap[p.id];return url?'<a href="'+esc(url)+'" target="_blank" rel="noopener"><img src="'+esc(url)+'" alt="'+esc(p.filename)+'" style="height:90px;max-width:130px;object-fit:cover;border-radius:8px;margin:4px"></a>':'';}).join('');}
-  el.innerHTML='<div class="catalog-block"><b>問題照片</b><div>'+imgs(null)+'</div>'+
+  function imgs(messageId){return photos.filter(function(p){return p.message_id===messageId;}).map(function(p){var url=pictureMap[p.id];return url?(String(p.mime_type||'').indexOf('video/')===0?'<video controls preload="metadata" playsinline src="'+esc(url)+'" style="width:220px;max-width:100%;border-radius:8px;margin:4px"></video>':'<a href="'+esc(url)+'" target="_blank" rel="noopener"><img src="'+esc(url)+'" alt="'+esc(p.filename)+'" style="height:90px;max-width:130px;object-fit:cover;border-radius:8px;margin:4px"></a>'):'';}).join('');}
+  el.innerHTML='<div class="catalog-block"><b>問題照片／影片</b><div>'+imgs(null)+'</div>'+
    msgs.map(function(m){return '<div style="border-top:1px solid #ddd;padding:10px 0"><div class="muted">'+esc(time(m.created_at))+'｜'+(m.author_id===ticket.created_by?'客戶':'處理人員')+'</div><div style="white-space:pre-wrap">'+esc(m.body)+'</div>'+imgs(m.id)+'</div>';}).join('')+
-   (ticket.status==='closed'?'<p>此問題單已結案。</p>':'<div><label>新增留言／處理進度<textarea id="ngReply-'+id+'" rows="3" style="width:100%"></textarea></label><label>附加照片<input type="file" id="ngReplyFiles-'+id+'" accept="image/jpeg,image/png,image/webp" multiple></label><button class="btn primary" data-ng-send>送出回覆</button></div>')+
+   (ticket.status==='closed'?'<p>此問題單已結案。</p>':'<div><label>新增留言／處理進度<textarea id="ngReply-'+id+'" rows="3" style="width:100%"></textarea></label><label>附加照片／影片（影片 30 秒內）<input type="file" id="ngReplyFiles-'+id+'" accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime,video/webm" multiple></label><button class="btn primary" data-ng-send>送出回覆</button></div>')+
    (mode==='admin'?'<label>處理狀態<select id="ngStatus-'+id+'">'+['new','processing','waiting_customer','resolved','closed'].map(function(s){return '<option value="'+s+'" '+(ticket.status===s?'selected':'')+'>'+badge(s)+'</option>';}).join('')+'</select></label><button class="btn secondary" data-ng-status>更新狀態</button>':'')+'</div>';
   var send=el.querySelector('[data-ng-send]');if(send)send.onclick=async function(){
    var body=$('ngReply-'+id).value.trim(),files=Array.from($('ngReplyFiles-'+id).files||[]);
    if(!body){alert('請先輸入留言');return;}send.disabled=true;
-   try{var rows=await api('ng_messages',{method:'POST',headers:{'Content-Type':'application/json',Prefer:'return=representation'},body:JSON.stringify({ticket_id:id,body})});
-    for(var f of files)await upload(id,rows[0].id,f);
+   try{var checked=[];for(var f of files)checked.push(await validateMedia(f));var rows=await api('ng_messages',{method:'POST',headers:{'Content-Type':'application/json',Prefer:'return=representation'},body:JSON.stringify({ticket_id:id,body})});
+    for(var j=0;j<files.length;j++)await upload(id,rows[0].id,files[j],checked[j]);
     el.dataset.open='';await openThread(mode,id);
    }catch(e){alert(e.message);send.disabled=false;}
   };
