@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = 'V2.33';
+  const VERSION = 'V2.34';
   const CFG = window.APP_CONFIG || {};
   const SB = CFG.SUPABASE_URL;
   const KEY = CFG.SUPABASE_PUBLISHABLE_KEY;
