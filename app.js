@@ -255,6 +255,22 @@
     } catch (e) { alert(`儲存失敗：${e.message}`); }
   }
 
+  async function createManualVendor(){
+    const name=$('newVendorName').value.trim(),contact_name=$('newVendorContact').value.trim(),
+      phone=$('newVendorPhone').value.trim(),email=$('newVendorEmail').value.trim(),days=Number($('newVendorLead').value);
+    const b=$('createVendorBtn'),msg=$('createVendorMsg');
+    if(!name){msg.textContent='請輸入出貨廠商名稱';return;}
+    if(!Number.isInteger(days)||days<0||days>365){msg.textContent='預設交期需為 0～365 天';return;}
+    try{
+      b.disabled=true;msg.textContent='正在建立…';
+      const result=await edgeApi({action:'vendor_create',name,contact_name,phone,email,default_lead_days:days},true);
+      msg.textContent='建立成功：'+result.vendor.vendor_code+' '+result.vendor.name+'。可在下方建立登入帳號。';
+      $('newVendorName').value='';$('newVendorContact').value='';$('newVendorPhone').value='';$('newVendorEmail').value='';
+      await loadAdmin();
+    }catch(e){msg.textContent='新增失敗：'+e.message;}
+    finally{b.disabled=false;}
+  }
+
   function renderVendorCards() {
     const profileMap = new Map(vendorProfiles.map((p) => [p.vendor_id, p]));
     $('vendorCards').innerHTML = vendors.map((v) => {
@@ -435,6 +451,7 @@
     $('reloadBtn').addEventListener('click', () => location.reload());
     $('reloadReviewBtn').addEventListener('click', loadReviewQueue);
     $('vendorReloadBtn').addEventListener('click', loadVendor);
+    $('createVendorBtn').addEventListener('click',createManualVendor);
     $('showPasswordBtn').addEventListener('click', () => $('passwordPanel').classList.toggle('hidden'));
     $('changePasswordBtn').addEventListener('click', changePassword);
     bindTabs();
