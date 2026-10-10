@@ -87,7 +87,7 @@ function ensureAdminTab(){
   var nav=document.querySelector('#adminView .tabs'); if(!nav)return;
   var b=document.createElement('button');b.className='tab';b.dataset.tab='catalog';b.textContent='批發商城';nav.appendChild(b);
   var panel=document.createElement('div');panel.id='tab-catalog';panel.className='tab-panel hidden';
-  panel.innerHTML='<div class="card section-card"><div class="catalog-head"><div><h2>批發商城</h2><p class="muted">商品指定出貨廠商；價格、權限與購物車以客戶為主。</p></div><button id="catNewProduct" class="btn primary" type="button">＋新增商品</button></div><div class="catalog-subnav"><button class="active" data-cat-admin="products">商品管理</button><button data-cat-admin="customers">客戶資料</button><button data-cat-admin="levels">客戶等級</button><button data-cat-admin="preview">客戶視角預覽</button><button data-cat-admin="requests">客戶採購單</button><button data-cat-admin="ng">NG 問題單</button></div><div id="catAdminProducts"></div><div id="catAdminCustomers" class="hidden"></div><div id="catAdminLevels" class="hidden"></div><div id="catAdminPreview" class="hidden"></div><div id="catAdminRequests" class="hidden"></div><div id="catAdminNg" class="hidden"></div></div>';
+  panel.innerHTML='<div class="card section-card"><div class="catalog-head"><div><h2>批發商城</h2><p class="muted">商品指定出貨廠商；價格、權限與購物車以客戶為主。</p></div><button id="catNewProduct" class="btn primary" type="button">＋新增商品</button></div><div class="catalog-subnav"><button class="active" data-cat-admin="products">商品管理</button><button data-cat-admin="customers">客戶資料</button><button data-cat-admin="levels">客戶等級</button><button data-cat-admin="preview">客戶視角預覽</button><button data-cat-admin="requests">客戶採購單</button><button data-cat-admin="ng">NG 問題單</button><button data-cat-admin="sales">銷售報表</button></div><div id="catAdminProducts"></div><div id="catAdminCustomers" class="hidden"></div><div id="catAdminLevels" class="hidden"></div><div id="catAdminPreview" class="hidden"></div><div id="catAdminRequests" class="hidden"></div><div id="catAdminNg" class="hidden"></div><div id="catSalesReport" class="hidden"></div></div>';
   document.querySelector('#adminView').appendChild(panel);
   b.addEventListener('click',function(){
     document.querySelectorAll('#adminView .tab').forEach(function(x){x.classList.toggle('active',x===b);});
@@ -103,6 +103,8 @@ function ensureAdminTab(){
     $('catAdminPreview').classList.toggle('hidden',x.dataset.catAdmin!=='preview');
     $('catAdminRequests').classList.toggle('hidden',x.dataset.catAdmin!=='requests');
     $('catAdminNg').classList.toggle('hidden',x.dataset.catAdmin!=='ng');
+    $('catSalesReport').classList.toggle('hidden',x.dataset.catAdmin!=='sales');
+    if(x.dataset.catAdmin==='sales'&&window.CatalogSalesReport)window.CatalogSalesReport.render();
     if(x.dataset.catAdmin==='ng'&&window.NGTickets)window.NGTickets.render('admin','catAdminNg');
     if(x.dataset.catAdmin==='requests')renderAdminPurchaseRequests().catch(showErr);
     if(x.dataset.catAdmin==='preview')renderAdminCustomerPreview().catch(showErr);
