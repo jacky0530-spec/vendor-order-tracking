@@ -291,7 +291,7 @@ async function openProductEditor(id){
     '<div class="catalog-block"><div class="catalog-head"><h3>客戶專屬價</h3><button id="catAddVendorPrice" class="btn secondary" type="button">＋新增</button></div><div id="catVendorPriceRows">'+vp.map(vendorPriceRow).join('')+'</div></div>'+
     '<div class="catalog-block"><h3>指定販售對象</h3><p class="muted">販售對象選「指定等級/客戶」時才生效。</p><b>等級</b><div class="catalog-checkbox-list">'+state.levels.map(function(l){return '<label><input type="checkbox" data-cat-access-level="'+l.id+'" '+(ac.some(function(a){return a.level_id===l.id;})?'checked':'')+'> '+esc(l.name)+'</label>';}).join('')+'</div><b style="display:block;margin-top:10px">個別客戶</b><div class="catalog-checkbox-list">'+state.customers.filter(function(v){return v.active;}).map(function(v){return '<label><input type="checkbox" data-cat-access-customer="'+v.id+'" '+(ac.some(function(a){return a.customer_id===v.id;})?'checked':'')+'> '+esc(v.customer_code+' '+v.name)+'</label>';}).join('')+'</div></div>'+
     '<div class="catalog-block"><h3>多層規格組合</h3><p class="muted">每行一層規格，例如：尺寸｜單人,雙人 或 顏色｜白色,灰色。最多三層，產生後可在下方逐筆修改規格編號、加價及最低量。</p><textarea id="catPDimensions" style="width:100%;min-height:85px" placeholder="尺寸｜單人,雙人\n顏色｜白色,灰色"></textarea><button id="catGenerateVariants" type="button" class="btn secondary">產生全部規格組合</button><div id="catDimensionMsg" class="muted"></div></div>'+ 
-    '<div class="catalog-block"><h3>商品規格明細</h3><p class="muted">每行：規格編號｜規格名稱｜加價｜最低訂購量；多層規格名稱以「尺寸：單人／顏色：白色」保存。已有規格可繼續手動修改。</p><textarea id="catPVariants" style="width:100%;min-height:110px">'+esc(variantsText(id))+'</textarea></div>'+
+    '<div class="catalog-block"><h3>商品規格明細</h3><p class="muted">每行：規格編號｜規格名稱｜加價｜最低訂購量｜銷售狀態；多層規格名稱以「尺寸：單人／顏色：白色」保存。狀態請填 available（正常銷售）、out_of_stock（暫時缺貨）、discontinued（已停售）。已有規格可繼續修改，停售不影響歷史訂單。</p><textarea id="catPVariants" style="width:100%;min-height:110px">'+esc(variantsText(id))+'</textarea></div>'+
     '<div class="catalog-block"><h3>商品圖片（可多張）</h3><input id="catPImages" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple><div class="muted" style="margin:6px 0">每張上限 20MB；下載時保留原始上傳檔。</div><div id="catExistingImages" class="catalog-image-list">'+renderImageAdmin(id)+'</div></div>';
   $('catAddVendorPrice').addEventListener('click',function(){$('catVendorPriceRows').insertAdjacentHTML('beforeend',vendorPriceRow(null));bindVendorPriceRemove();});
   $('catGenerateVariants').onclick=function(){
@@ -311,7 +311,7 @@ async function openProductEditor(id){
       var existing=parseVariants($('catPVariants').value);
       var existingNames=new Map(existing.map(function(x){return [x.name,x];}));
       var base=($('catPCode').value.trim()||'SKU').replace(/[^a-zA-Z0-9_-]/g,'').slice(0,20);
-      var rows=combos.map(function(c,i){var name=c.map(function(x){return x.name+'：'+x.value;}).join('／'),old=existingNames.get(name);return [old&&old.sku_code||base+'-'+String(i+1).padStart(3,'0'),name,old?old.price_delta:0,old&&old.min_order_qty!=null?old.min_order_qty:''].join('｜');});
+      var rows=combos.map(function(c,i){var name=c.map(function(x){return x.name+'：'+x.value;}).join('／'),old=existingNames.get(name);return [old&&old.sku_code||base+'-'+String(i+1).padStart(3,'0'),name,old?old.price_delta:0,old&&old.min_order_qty!=null?old.min_order_qty:'',old&&old.sale_status?old.sale_status:'available'].join('｜');});
       var ta=$('catPVariants');if(ta.value.trim()&&!confirm('將以產生的組合取代下方商品規格明細；同名組合會保留原本加價與最低量。確定繼續？'))return;
       ta.value=rows.join('\n');$('catDimensionMsg').textContent='已產生 '+rows.length+' 組商品規格，請確認後按「儲存商品」';
     }catch(e){$('catDimensionMsg').textContent='無法產生：'+e.message;}
@@ -320,7 +320,7 @@ async function openProductEditor(id){
   $('catProductModal').classList.remove('hidden');
 }
 function toLocalInput(v){if(!v)return '';var d=new Date(v),off=d.getTimezoneOffset();return new Date(d.getTime()-off*60000).toISOString().slice(0,16);}
-function variantsText(id){return getVariants(id).map(function(v){return [v.sku_code||'',v.name||'',v.price_delta||0,v.min_order_qty||''].join('｜');}).join('\n');}
+function variantsText(id){return state.variants.filter(function(v){return v.product_id===id;}).sort(function(a,b){return (a.sort_order||0)-(b.sort_order||0);}).map(function(v){return [v.sku_code||'',v.name||'',v.price_delta||0,v.min_order_qty||'',v.sale_status||(v.active===false?'discontinued':'available')].join('｜');}).join('\n');}
 function vendorPriceRow(x){
   x=x||{};return '<div class="catalog-vendor-price-row"><label class="wide">客戶<select data-vp-customer>'+state.customers.filter(function(v){return v.active;}).map(function(v){return '<option value="'+v.id+'" '+(x.customer_id===v.id?'selected':'')+'>'+esc(v.customer_code+' '+v.name)+'</option>';}).join('')+'</select></label><label>專屬價<input data-vp-price type="number" min="0" step="0.01" value="'+(x.price!=null?esc(x.price):'')+'"></label><label>最低量<input data-vp-min type="number" min="0" step="any" value="'+(x.min_order_qty!=null?esc(x.min_order_qty):'')+'"></label><button type="button" class="btn ghost" data-vp-remove>移除</button></div>';
 }
@@ -341,8 +341,8 @@ async function deleteImage(im){
 function parseVariants(txt){
   return String(txt||'').split(/\r?\n/).map(function(x){return x.trim();}).filter(Boolean).map(function(line,i){
     var a=line.split(/[｜|]/).map(function(x){return x.trim();});
-    if(a.length===1)return {sku_code:null,name:a[0],price_delta:0,min_order_qty:null,sort_order:i+1,active:true};
-    return {sku_code:a[0]||null,name:a[1]||a[0],price_delta:Number(a[2]||0),min_order_qty:a[3]?Number(a[3]):null,sort_order:i+1,active:true};
+    if(a.length===1)return {sku_code:null,name:a[0],price_delta:0,min_order_qty:null,sort_order:i+1,sale_status:'available',active:true};
+    var status=a[4]||'available';if(!['available','out_of_stock','discontinued'].includes(status))throw new Error('規格 '+(a[1]||a[0])+' 的銷售狀態不正確');return {sku_code:a[0]||null,name:a[1]||a[0],price_delta:Number(a[2]||0),min_order_qty:a[3]?Number(a[3]):null,sort_order:i+1,sale_status:status,active:status==='available'};
   });
 }
 async function saveProduct(){
@@ -371,8 +371,8 @@ async function saveProduct(){
     }
     if(toInsert.length)await rest('catalog_variants',{method:'POST',body:JSON.stringify(toInsert)});
     for(var ex of existing){
-      if(!used.has(ex.id)&&ex.active!==false)
-        await rest('catalog_variants?id=eq.'+ex.id,{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify({active:false})});
+      if(!used.has(ex.id)&&ex.sale_status!=='discontinued')
+        await rest('catalog_variants?id=eq.'+ex.id,{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify({sale_status:'discontinued',active:false})});
     }
     await Promise.all([
       rest('catalog_customer_level_prices?product_id=eq.'+pid,{method:'DELETE'}),
