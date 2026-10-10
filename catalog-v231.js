@@ -356,13 +356,30 @@ async function saveProduct(){
     }else{
       payload.created_by=sess().user.id;var rr=await rest('catalog_products',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify(payload)});pid=rr[0].id;
     }
+    // 保留已被採購單、訂單或購物車引用的規格 ID；不得整批刪除再新增。
+    var desired=parseVariants($('catPVariants').value);
+    var existing=state.currentProduct?await rest('catalog_variants?select=*&product_id=eq.'+pid):[];
+    var used=new Set(),toInsert=[];
+    for(var vi=0;vi<desired.length;vi++){
+      var v=desired[vi];
+      var match=existing.find(function(e){return !used.has(e.id)&&v.sku_code&&e.sku_code===v.sku_code;})||
+        existing.find(function(e){return !used.has(e.id)&&e.name===v.name;});
+      if(match){
+        used.add(match.id);
+        await rest('catalog_variants?id=eq.'+match.id,{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify(v)});
+      }else toInsert.push(Object.assign({product_id:pid},v));
+    }
+    if(toInsert.length)await rest('catalog_variants',{method:'POST',body:JSON.stringify(toInsert)});
+    for(var ex of existing){
+      if(!used.has(ex.id)&&ex.active!==false)
+        await rest('catalog_variants?id=eq.'+ex.id,{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify({active:false})});
+    }
     await Promise.all([
-      rest('catalog_variants?product_id=eq.'+pid,{method:'DELETE'}),
       rest('catalog_customer_level_prices?product_id=eq.'+pid,{method:'DELETE'}),
       rest('catalog_customer_prices?product_id=eq.'+pid,{method:'DELETE'}),
       rest('catalog_customer_access?product_id=eq.'+pid,{method:'DELETE'})
     ]);
-    var vars=parseVariants($('catPVariants').value);if(vars.length)await rest('catalog_variants',{method:'POST',body:JSON.stringify(vars.map(function(x){x.product_id=pid;return x;}))});
+
     var lps=[];document.querySelectorAll('[data-cat-level-price]').forEach(function(inp){if(inp.value!=='')lps.push({product_id:pid,level_id:inp.dataset.catLevelPrice,price:Number(inp.value)});});if(lps.length)await rest('catalog_customer_level_prices',{method:'POST',body:JSON.stringify(lps)});
     var vps=[];document.querySelectorAll('#catVendorPriceRows .catalog-vendor-price-row').forEach(function(r){var p=r.querySelector('[data-vp-price]').value;if(p!=='')vps.push({product_id:pid,customer_id:r.querySelector('[data-vp-customer]').value,price:Number(p),min_order_qty:r.querySelector('[data-vp-min]').value?Number(r.querySelector('[data-vp-min]').value):null});});if(vps.length)await rest('catalog_customer_prices',{method:'POST',body:JSON.stringify(vps)});
     if(payload.visibility_mode==='restricted'){
