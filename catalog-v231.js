@@ -317,7 +317,7 @@ async function openProductEditor(id){
     }catch(e){$('catDimensionMsg').textContent='無法產生：'+e.message;}
   };
   renderVariantRows();
-  $('catAddVariant').onclick=function(){syncVariantRows();$('catPVariants').value+=($('catPVariants').value?'\\n':'')+'｜新規格｜0｜1｜available';renderVariantRows();};
+  $('catAddVariant').onclick=function(){syncVariantRows();$('catPVariants').value+=($('catPVariants').value?'\n':'')+'｜新規格｜0｜1｜available';renderVariantRows();};
   bindVendorPriceRemove();bindImageAdmin();
   $('catProductModal').classList.remove('hidden');
 }
@@ -361,7 +361,7 @@ function syncVariantRows(){
   if(fields.some(function(f){return f.includes('｜')||f.includes('|')||f.includes('\\n');}))throw Error('規格欄位不能包含分隔符號｜');
   return fields.join('｜');
  }).filter(Boolean);
- $('catPVariants').value=lines.join('\\n');
+ $('catPVariants').value=lines.join('\n');
 }
 function renderVariantRows(){
  var box=$('catVariantRows');if(!box)return;
