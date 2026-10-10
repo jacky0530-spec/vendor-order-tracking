@@ -115,7 +115,7 @@
     const rows = await rest(`user_profiles?select=*&user_id=eq.${encodeURIComponent(uid)}`);
     if (!rows?.length) throw new Error('此帳號尚未建立權限資料');
     profile = rows[0];
-    if (profile.active === false) throw new Error('此帳號已停用');
+    if (profile.active === false || profile.role === 'vendor') throw new Error('廠商登入已關閉，請聯繫管理員或小幫手');
   }
 
   function showLoggedOut() {
@@ -279,16 +279,16 @@
       const p = profileMap.get(v.id);
       return `<div class="vendor-card">
         <h3>${esc(v.vendor_code)} ${esc(v.name)}</h3>
-        <div class="muted">${p?.active ? '帳號：已建立' : '帳號：尚未建立'}</div>
+        <div class="muted">廠商登入已停用｜由管理員／小幫手處理出貨</div>
         <div class="row">
           <label>預設交期（天）<input id="lead-${esc(v.id)}" type="number" min="0" max="365" value="${Number(v.default_lead_days ?? 14)}"></label>
           <button class="btn small ghost" data-save-lead="${esc(v.id)}">儲存</button>
         </div>
-        <button class="btn primary wide" data-account="${esc(v.id)}">${p ? '重設廠商密碼' : '建立廠商帳號'}</button>
+
       </div>`;
     }).join('');
     document.querySelectorAll('[data-save-lead]').forEach((b) => b.addEventListener('click', () => saveLeadDays(b.dataset.saveLead)));
-    document.querySelectorAll('[data-account]').forEach((b) => b.addEventListener('click', () => makeVendorAccount(b.dataset.account)));
+
   }
 
   async function saveLeadDays(vendorId) {
@@ -304,6 +304,7 @@
   }
 
   async function makeVendorAccount(vendorId) {
+    alert('廠商帳號登入與建帳功能已停用。'); return;
     if (!confirm('建立或重設後會產生新的臨時密碼，確定繼續？')) return;
     try {
       const data = await edgeApi({ action:'vendor_account', vendor_id:vendorId }, true);
