@@ -482,17 +482,21 @@ async function renderAdminPurchaseRequests(){
     rest('customer_purchase_request_items?select=*&order=sort_order.asc')
   ]);
   var requests=rs[0]||[],items=rs[1]||[];
+  var vid=[...new Set(items.filter(function(i){return i.variant_id;}).map(function(i){return i.variant_id;}))];
+  var variantStatuses=vid.length?await rest('catalog_variants?select=id,name,sale_status&id=in.('+vid.map(encodeURIComponent).join(',')+')'):[];
+  var statusById={};variantStatuses.forEach(function(v){statusById[v.id]=v.sale_status;});
   el.innerHTML='<div class="catalog-head"><h3>客戶採購單審核</h3><button class="btn ghost" id="catRequestReload">重新整理</button></div><p class="muted">核准後才正式建立 ORD 並通知指定出貨廠商；退回則不建立訂單。</p>'+
     (requests.map(function(r){
       var its=items.filter(function(x){return x.request_id===r.id;});
       var status=r.status==='pending'?'待確認':r.status==='approved'?'已轉正式訂單':'已退回';
       var quantity=its.reduce(function(n,i){return n+Number(i.quantity||0);},0);
+      var held=its.filter(function(i){return i.variant_id&&statusById[i.variant_id]&&statusById[i.variant_id]!=='available';});
       var detail='<div style="overflow-x:auto;margin:12px 0"><table style="width:100%;border-collapse:collapse;min-width:710px;font-size:14px"><thead><tr style="background:#f1f5f9;text-align:left"><th style="padding:10px 8px">商品編號</th><th style="padding:10px 8px">商品名稱</th><th style="padding:10px 8px">規格／顏色</th><th style="padding:10px 8px;text-align:right">數量</th><th style="padding:10px 8px;text-align:right">單價</th><th style="padding:10px 8px;text-align:right">小計</th></tr></thead><tbody>'+
         its.map(function(i){return '<tr style="border-bottom:1px solid #e2e8f0"><td style="padding:10px 8px;white-space:nowrap"><b>'+esc(i.product_code)+'</b></td><td style="padding:10px 8px">'+esc(i.product_name)+'</td><td style="padding:10px 8px">'+esc(i.variant_name||'—')+'</td><td style="padding:10px 8px;text-align:right;white-space:nowrap"><b style="font-size:17px">'+esc(i.quantity)+'</b> '+esc(i.order_unit||'')+'</td><td style="padding:10px 8px;text-align:right;white-space:nowrap">'+money(i.unit_price)+'</td><td style="padding:10px 8px;text-align:right;white-space:nowrap"><b>'+money(i.line_total)+'</b></td></tr>';}).join('')+
         '</tbody></table></div>';
       return '<div class="catalog-myorder" style="padding:16px"><div class="catalog-head"><div><b style="font-size:18px">PUR-'+String(r.request_no).padStart(6,'0')+'</b> <span class="catalog-pill">'+esc(status)+'</span><div style="font-weight:700;margin-top:4px">'+esc(r.buyer)+'</div></div><div style="text-align:right"><div class="muted">採購總金額</div><b style="font-size:22px">'+money(r.total)+'</b></div></div>'+
       '<div class="muted">送出：'+esc(fmtDate(r.created_at))+'</div><div style="margin-top:5px"><b>收貨資料：</b>'+esc(r.receiver)+'｜'+esc(r.receiver_phone||'')+'｜'+esc(r.receiver_address||'')+'</div>'+
-      detail+'<div style="display:flex;justify-content:flex-end;gap:18px;align-items:center;font-weight:700">品項 '+its.length+' 筆｜總數量 '+quantity+'｜合計 <span style="font-size:20px">'+money(r.total)+'</span></div>'+
+      detail+(held.length?'<div style="padding:10px;margin-bottom:9px;background:#fffaeb;border:1px solid #fedf89;border-radius:8px;color:#92400e"><b>提醒：此採購單包含 '+held.length+' 項已暫停或停售規格</b><div>'+held.map(function(i){return esc(i.product_code+' '+(i.variant_name||''))+'（'+(statusById[i.variant_id]==='discontinued'?'已停售':'暫時缺貨')+'）';}).join('、')+'</div>請確認是否仍可供貨，再決定核准或退回。</div>':'')+'<div style="display:flex;justify-content:flex-end;gap:18px;align-items:center;font-weight:700">品項 '+its.length+' 筆｜總數量 '+quantity+'｜合計 <span style="font-size:20px">'+money(r.total)+'</span></div>'+
       (r.note?'<div class="muted" style="margin-top:9px">客戶備註：'+esc(r.note)+'</div>':'')+
       (r.status==='pending'?'<div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap"><button class="btn primary" data-purchase-approve="'+r.id+'">確認無誤，轉正式訂單</button><button class="btn ghost" data-purchase-reject="'+r.id+'">退回採購單</button></div>':'<div class="muted" style="margin-top:10px">'+(r.status==='approved'?'正式訂單：'+esc((r.order_numbers||[]).join('、')):'退回原因：'+esc(r.review_note||'—'))+'</div>')+'</div>';
     }).join('')||'<div class="catalog-empty">沒有客戶採購單。</div>');
