@@ -350,6 +350,21 @@ async function saveProduct(){
   try{
     var payload={product_code:$('catPCode').value.trim(),name:$('catPName').value.trim(),description:$('catPDesc').value.trim()||null,fulfillment_vendor_id:$('catPFulfill').value,sale_mode:$('catPMode').value,base_price:Number($('catPBase').value||0),min_order_qty:Number($('catPMin').value||1),order_unit:$('catPUnit').value.trim()||'件',pack_text:$('catPPack').value.trim()||null,sale_start_at:$('catPStart').value?new Date($('catPStart').value).toISOString():null,sale_end_at:$('catPEnd').value?new Date($('catPEnd').value).toISOString():null,expected_ship_date:$('catPShip').value||null,visibility_mode:$('catPVisibility').value,published:$('catPPublished').checked,active:$('catPActive').checked,updated_at:new Date().toISOString()};
     if(!payload.product_code||!payload.name)throw new Error('商品編號與商品名稱必填');
+    // 停售／缺貨前提示既有待審 PUR 與未出貨 ORD，未完成訂單不自動取消。
+    if(state.currentProduct){
+      var oldVariants=await rest('catalog_variants?select=id,sku_code,name,sale_status&product_id=eq.'+state.currentProduct.id);
+      var edited=parseVariants($('catPVariants').value),warnings=[];
+      for(var ov of oldVariants){
+        var same=edited.find(function(v){return v.sku_code&&ov.sku_code&&v.sku_code===ov.sku_code;})||
+          edited.find(function(v){return v.name===ov.name;});
+        var nextStatus=same?same.sale_status:'discontinued';
+        if(nextStatus==='available'||ov.sale_status===nextStatus)continue;
+        var impact=await rpc('catalog_variant_open_work',{p_variant_id:ov.id});
+        if(impact.open_order_count||impact.pending_purchase_count)warnings.push(
+          ov.name+'：未完成 ORD '+impact.open_order_count+' 筆（尚未出貨 '+impact.unshipped_quantity+'），待審 PUR '+impact.pending_purchase_count+' 筆（'+impact.pending_purchase_quantity+' 件）');
+      }
+      if(warnings.length&&!confirm('下列規格暫停／停售後，既有訂單不會取消：\n\n'+warnings.join('\n')+'\n\n確定繼續儲存？'))return;
+    }
     var pid;
     if(state.currentProduct){
       await rest('catalog_products?id=eq.'+state.currentProduct.id,{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify(payload)});pid=state.currentProduct.id;
