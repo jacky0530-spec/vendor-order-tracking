@@ -458,7 +458,8 @@ function ensureCustomerUI(){
   if($('catalogCustomerNav'))return;
   var view=$('customerView'),card=view&&view.querySelector('.card.section-card');if(!card)return;
   var nav=document.createElement('div');nav.id='catalogCustomerNav';nav.className='catalog-vendor-nav';nav.innerHTML='<button class="active" data-cat-ctab="store">批發賣場</button><button data-cat-ctab="cart">購物車 <span id="catCartCount"></span></button><button data-cat-ctab="purchases">我的採購</button><button data-cat-ctab="addresses">收貨資料</button><button data-cat-ctab="password">修改密碼</button><button data-cat-ctab="ng">NG 商品反應</button>';
-  card.insertBefore(nav,card.firstChild);
+  var topbar=document.querySelector('header.topbar');
+  if(topbar)topbar.appendChild(nav);else card.insertBefore(nav,card.firstChild);
   var wrap=document.createElement('div');wrap.id='catalogCustomerArea';card.appendChild(wrap);
   nav.querySelectorAll('[data-cat-ctab]').forEach(function(b){b.addEventListener('click',function(){switchCustomerTab(b.dataset.catCtab,b);});});
   switchCustomerTab('store',nav.querySelector('[data-cat-ctab=store]'));
