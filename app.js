@@ -230,7 +230,7 @@
     $('orderRows').innerHTML = rows.map((o) => `
       <tr>
         <td>${alertBadge(o.alert_level, o.overdue_days)}</td>
-        <td><b>${esc(o.order_no)}</b><br><span class="muted">${esc(o.order_date)}</span><br><span class="buyer-line">訂貨人：<b>${esc(o.buyer || '—')}</b></span></td>
+        <td><b>${esc(o.order_no)}</b><br><button type="button" class="btn small ghost" data-order-history="${esc(o.id)}">查看出貨歷程</button><br><span class="muted"${esc(o.order_date)}</span><br><span class="buyer-line">訂貨人：<b>${esc(o.buyer || '—')}</b></span></td>
         <td>${productLines(o.id)}</td>
         <td><b>${esc(o.vendor_code)}</b><br>${esc(o.vendor_name)}</td>
         <td>${esc(o.receiver || '—')}<br><span class="muted">${esc(o.receiver_phone || '')}</span></td>
@@ -245,6 +245,21 @@
       </tr>`).join('') || '<tr><td colspan="9" class="muted">沒有符合條件的訂單。</td></tr>';
 
     document.querySelectorAll('[data-save-status]').forEach((btn) => btn.addEventListener('click', () => saveOrderStatus(btn.dataset.saveStatus)));
+    document.querySelectorAll('[data-order-history]').forEach((btn) => btn.addEventListener('click', async () => {
+      const oid=btn.dataset.orderHistory,row=btn.closest('tr');
+      const next=row.nextElementSibling;
+      if(next?.dataset.historyFor===oid){next.remove();return;}
+      const tr=document.createElement('tr');tr.dataset.historyFor=oid;
+      const td=document.createElement('td');td.colSpan=9;td.textContent='正在讀取出貨紀錄…';tr.appendChild(td);row.after(tr);
+      try {
+        const shipments=await rest('order_item_shipments?select=order_item_id,actual_ship_date,shipped_quantity,carrier,tracking_no,note,created_at&order_id=eq.'+encodeURIComponent(oid)+'&order=created_at.asc');
+        const names=new Map(items.filter(x=>x.order_id===oid).map(x=>[x.id,x]));
+        if(!shipments.length){td.innerHTML='<span class="muted">此訂單尚無出貨紀錄</span>';return;}
+        td.innerHTML='<div style="padding:10px"><b>出貨歷程｜'+shipments.length+' 筆</b>'+
+          shipments.map((sh,k)=>{const it=names.get(sh.order_item_id)||{};return '<div style="padding:8px;border-bottom:1px solid #ddd">第 '+(k+1)+' 筆｜'+esc(sh.actual_ship_date||'')+'｜'+esc(it.product_code||'')+' '+esc(it.product_name||'')+' '+esc(it.variant||'')+'｜<b>'+esc(sh.shipped_quantity)+' '+esc(it.quantity_unit||'')+'</b>｜'+esc(sh.carrier||'')+'｜'+esc(sh.tracking_no||'')+'｜'+esc(sh.note||'')+'</div>';}).join('')+'</div>';
+      } catch(e){td.textContent='讀取出貨歷程失敗：'+e.message;}
+    }));
+
   }
 
   async function saveOrderStatus(orderId) {
