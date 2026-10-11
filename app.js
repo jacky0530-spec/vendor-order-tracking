@@ -128,6 +128,18 @@
     $('identity').textContent = '';
   }
 
+  function bootDone() { document.documentElement.classList.remove('app-booting'); }
+  function waitCustomerReady() {
+    return new Promise(resolve => {
+      if (document.getElementById('catStoreGrid')) return resolve();
+      let completed=false;
+      let timeout;
+      const finish=()=>{if(completed)return;completed=true;window.removeEventListener('catalog-store-ready',finish);clearTimeout(timeout);resolve();};
+      window.addEventListener('catalog-store-ready',finish,{once:true});
+      timeout=setTimeout(finish,8000);
+    });
+  }
+
   async function showLoggedIn() {
     const brand = document.getElementById('appBrand'); if (brand) brand.textContent = profile?.role === 'customer' ? '宜羿企業B2B商城' : '廠商訂單追蹤系統';
     $('loginView').classList.add('hidden');
@@ -140,16 +152,22 @@
       $('vendorView').classList.add('hidden');
       if (cv) cv.classList.add('hidden');
       await loadAdmin();
+      // Additional admin modules enhance the original table asynchronously.
+      await new Promise(resolve=>setTimeout(resolve,760));
+      bootDone();
     } else if (profile.role === 'vendor') {
       $('adminView').classList.add('hidden');
       $('vendorView').classList.remove('hidden');
       if (cv) cv.classList.add('hidden');
       await loadVendor();
+      bootDone();
     } else if (profile.role === 'customer') {
       $('adminView').classList.add('hidden');
       $('vendorView').classList.add('hidden');
       if (cv) cv.classList.remove('hidden');
       window.dispatchEvent(new CustomEvent('customer-view-shown'));
+      await waitCustomerReady();
+      bootDone();
     } else {
       throw new Error('帳號角色設定錯誤');
     }
@@ -446,8 +464,10 @@
         saveSession();
         await loadProfile();
         setMessage('loginMsg','');
+        document.documentElement.classList.add('app-booting');
         await showLoggedIn();
       } catch (e) {
+        bootDone();
         clearSession();
         setMessage('loginMsg', e.message, 'error');
       }
@@ -489,10 +509,11 @@
         session = saved;
         await loadProfile();
         await showLoggedIn();
-      }
+      } else { bootDone(); }
     } catch (e) {
       clearSession();
       showLoggedOut();
+      bootDone();
     }
   }
 
