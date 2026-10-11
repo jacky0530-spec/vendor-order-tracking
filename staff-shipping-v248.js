@@ -72,23 +72,34 @@ function excel(name,data){
  var url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'})),a=document.createElement('a');a.href=url;a.download=name+'.csv';a.click();setTimeout(function(){URL.revokeObjectURL(url);},1500);
  alert('Excel 元件尚未載入，已改匯出可用 Excel 開啟的 CSV 檔。');
 }
-var shipColumns=['ORD訂單編號','訂單日期','廠商編號','出貨廠商','訂單狀態','商品編號','商品名稱','規格','訂購量','已出貨量','未出貨量','單位','本次出貨數量(填寫)','實際出貨日(YYYY-MM-DD)','物流／貨運(選填)','託運號碼(選填)','備註(選填)','系統明細ID(請勿修改)'];
+var shipColumns=['ORD訂單編號','訂單日期','廠商編號','出貨廠商','訂單狀態','商品編號','商品名稱','規格','訂購量','已出貨量','未出貨量','單位','本次出貨數量(填寫)','實際出貨日(YYYY-MM-DD)','物流／貨運(選填)','託運號碼(選填)','備註(選填)'];
 function exportOrders(){
  if(!loaded){alert('請先讀取資料');return;}
  var rows=rowsFor(activeOrders());if($('staffShipPending').checked)rows=rows.filter(function(x){return x.remaining>0&&!['cancelled','completed'].includes(x.order.status);});
  var data=[shipColumns];rows.forEach(function(x){data.push(['ORD-'+String(x.order.tracking_id).padStart(6,'0'),x.order.order_date,x.vendor?.vendor_code||'',x.vendor?.name||'',status(x.order.status),x.item.product_code||'',x.item.product_name||'',x.item.variant||'',x.quantity,x.shipped,x.remaining,x.item.quantity_unit||'','','','','','',x.item.id]);});
- excel('出貨回填_'+new Date().toISOString().slice(0,10),data);
+ if(typeof XLSX==='undefined'){alert('出貨回填需要 Excel 元件，請確認網路連線後重新整理');return;}
+ var book=XLSX.utils.book_new();
+ var visible=data.map(function(row){return row.slice(0,17);});
+ var meta=[['列號','系統明細ID']];
+ for(var i=1;i<data.length;i++)meta.push([i+1,data[i][17]]);
+ XLSX.utils.book_append_sheet(book,XLSX.utils.aoa_to_sheet(visible),'出貨回填');
+ XLSX.utils.book_append_sheet(book,XLSX.utils.aoa_to_sheet(meta),'_internal_rows');
+ book.Workbook.Sheets[1].Hidden=1;
+ XLSX.writeFile(book,'出貨回填_'+new Date().toISOString().slice(0,10)+'.xlsx');
 }
 async function importShipmentWorkbook(file){
  if(!file)return;var result=$('staffShipImportResult');result.textContent='正在驗證 Excel…';
  try{
   if(typeof XLSX==='undefined')throw Error('Excel 元件未載入，請檢查網路後重新整理');
   var wb=XLSX.read(await file.arrayBuffer(),{type:'array'}),lines=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:false,defval:''});
+  if(!wb.Sheets._internal_rows)throw Error('此 Excel 缺少系統對應資料，請重新匯出最新版本');
+  var metaRows=XLSX.utils.sheet_to_json(wb.Sheets._internal_rows,{header:1,raw:false,defval:''});
+  var internalIds=new Map(metaRows.slice(1).map(function(row){return [Number(row[0]),String(row[1]||'').trim()];}));
   if(!lines.length||shipColumns.some(function(h,i){return String(lines[0][i]).trim()!==h;}))throw Error('格式不符，請使用本系統匯出的 Excel');
   var known=new Map(rowsFor(state.orders).map(function(x){return [x.item.id,x];})),seen=new Set(),work=[],issues=[];
   for(var i=1;i<lines.length;i++){
    var row=lines[i],input=String(row[12]||'').trim();if(!input)continue;
-   var id=String(row[17]||'').trim(),item=known.get(id),qty=Number(input),date=String(row[13]||'').trim(),label='第 '+(i+1)+' 列';
+   var id=internalIds.get(i+1)||'',item=known.get(id),qty=Number(input),date=String(row[13]||'').trim(),label='第 '+(i+1)+' 列';
    if(!item){issues.push(label+'：商品明細 ID 無效');continue;}
    if(seen.has(id)){issues.push(label+'：同一商品重複填報');continue;}seen.add(id);
    if(String(row[0]||'').trim()!=='ORD-'+String(item.order.tracking_id).padStart(6,'0')||String(row[5]||'').trim()!==String(item.item.product_code||'')){issues.push(label+'：訂單或貨號不一致');continue;}
