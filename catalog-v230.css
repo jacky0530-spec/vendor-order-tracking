@@ -76,3 +76,34 @@
   .catalog-cart-row{grid-template-columns:52px 1fr auto}.catalog-cart-row .price,.catalog-cart-row .qty{grid-column:2}
   .catalog-modal{padding:4px;align-items:flex-end}.catalog-modal-card{max-height:96vh;border-radius:18px 18px 6px 6px}
 }
+
+/* V2.57 客戶 B2B：桌面與 iPad 觸控操作 */
+#customerView .catalog-vendor-nav{position:sticky;top:70px;z-index:12;background:#fff;padding:10px 0;gap:10px;flex-wrap:wrap}
+#customerView .catalog-vendor-nav button{min-height:44px;padding:11px 17px;font-size:15px}
+#customerView .catalog-store-toolbar{grid-template-columns:minmax(210px,2fr) minmax(150px,1fr) auto}
+#customerView .catalog-store-toolbar input,#customerView .catalog-store-toolbar select,
+#customerView .catalog-purchase-filters input,#customerView .catalog-purchase-filters select{min-height:44px}
+#customerView .catalog-card-img{cursor:pointer}
+#customerView .catalog-card-img:focus-visible,#customerView .catalog-myorder summary:focus-visible{outline:3px solid #087f72;outline-offset:2px}
+#customerView .catalog-card-actions .btn{min-height:44px;white-space:normal}
+#customerView .catalog-purchase-filters{display:grid;grid-template-columns:minmax(210px,2fr) minmax(170px,1fr) auto;gap:10px;margin:12px 0}
+#customerView .catalog-myorder[hidden]{display:none!important}
+#customerView .catalog-myorder summary{min-height:56px;touch-action:manipulation}
+#customerView .catalog-myorder[open]{border-color:#a8d9d2;box-shadow:0 2px 10px rgba(0,100,90,.06)}
+#customerView .catalog-cart-row{grid-template-columns:70px minmax(200px,2fr) minmax(70px,.6fr) minmax(160px,1fr) auto}
+#customerView .catalog-cart-row .btn{min-height:42px}
+#customerView .catalog-product-detail select,#customerView .catalog-product-detail input{min-height:44px}
+@media (min-width:801px) and (max-width:1180px){
+ #customerView .catalog-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+ #customerView .catalog-cart-row{grid-template-columns:64px minmax(160px,1fr) 100px 155px auto;gap:8px}
+ #customerView .catalog-card-actions{flex-wrap:wrap}
+}
+@media (max-width:800px){
+ #customerView .catalog-vendor-nav{top:60px;overflow-x:auto;flex-wrap:nowrap;scrollbar-width:thin}
+ #customerView .catalog-vendor-nav button{white-space:nowrap;flex-shrink:0}
+ #customerView .catalog-store-toolbar,#customerView .catalog-purchase-filters{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+ #customerView .catalog-store-toolbar input,#customerView .catalog-purchase-filters input{grid-column:1/-1}
+ #customerView .catalog-card-actions{flex-direction:column}
+ #customerView .catalog-cart-row{grid-template-columns:64px minmax(0,1fr) auto}
+ #customerView .catalog-cart-row .qty,#customerView .catalog-cart-row .price{grid-column:2/-1}
+}
