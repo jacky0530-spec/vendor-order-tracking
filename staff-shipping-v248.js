@@ -43,24 +43,9 @@ function rowsFor(orders){
 }
 function render(){
  var root=$('staffShipResults');if(!root||!loaded)return;
- var orders=activeOrders(),rows=rowsFor(orders),pending=$('staffShipPending')?.checked;
- if(pending)rows=rows.filter(function(x){return x.remaining>0&&!['cancelled','completed'].includes(x.order.status);});
- root.innerHTML='<p class="muted">符合篩選：'+orders.length+' 張訂單，共 '+rows.length+' 項；可輸入本次出貨數量並按「回填出貨」。Excel 匯出會以篩選條件產生，包含完整商品明細。</p>'+
- (rows.slice(0,300).map(function(x){
-  var i=x.item,o=x.order,v=x.vendor||{};
-  return '<div class="catalog-myorder" style="padding:12px;margin-bottom:10px"><div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:space-between"><div><b>ORD-'+String(o.tracking_id).padStart(6,'0')+'</b>｜'+e(v.vendor_code||'')+' '+e(v.name||'')+'<div class="muted">'+e(o.buyer||'')+'｜'+e(asDate(o.order_date))+'｜'+e(status(o.status))+'</div><div>'+e(i.product_code||'')+' '+e(i.product_name||'')+'｜'+e(i.variant||'')+'</div><div><b>訂購 '+x.quantity+'｜已出 '+x.shipped+'｜剩餘 <span style="color:#b54708">'+x.remaining+'</span></b> '+e(i.quantity_unit||'')+'</div></div>'+
- (x.remaining>0&&!['cancelled','completed'].includes(o.status)?'<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:end"><label>本次出貨數<input data-qty="'+i.id+'" type="number" min="0.01" max="'+x.remaining+'" step="any" value="'+x.remaining+'" style="width:100px"></label><label>出貨日<input data-date="'+i.id+'" type="date" value="'+new Date().toLocaleDateString('en-CA')+'" style="width:155px"></label><label>物流／貨運<input data-carrier="'+i.id+'" placeholder="選填" style="width:120px"></label><label>託運號碼<input data-tracking="'+i.id+'" placeholder="選填" style="width:145px"></label><label>備註<input data-note="'+i.id+'" placeholder="選填" style="width:145px"></label><button type="button" class="btn primary" data-staff-ship="'+i.id+'">回填出貨</button></div>':'<span class="muted">此項無待出貨數量或訂單已結束</span>')+'</div></div>';
- }).join('')||'<div class="catalog-empty">無符合條件的訂單商品。</div>')+
- (rows.length>300?'<p class="muted">畫面最多顯示前 300 項，請縮小篩選條件；匯出仍涵蓋全部符合資料。</p>':'');
- root.querySelectorAll('[data-staff-ship]').forEach(function(b){b.onclick=async function(){
-  var id=b.dataset.staffShip,entry=rows.find(function(x){return x.item.id===id;});if(!entry)return;
-  var val=function(n){return root.querySelector('[data-'+n+'="'+id+'"]').value.trim();},qty=Number(val('qty')),date=val('date');
-  if(!qty||qty<=0||qty>entry.remaining||!date){alert('請確認出貨日及數量不得超過剩餘數量');return;}
-  if(!confirm('確定回填 ORD-'+String(entry.order.tracking_id).padStart(6,'0')+' 本次出貨 '+qty+' '+(entry.item.quantity_unit||'')+'？'))return;
-  b.disabled=true;
-  try{await fetchApi('rpc/staff_record_shipment',{method:'POST',body:JSON.stringify({p_order_item_id:id,p_quantity:qty,p_ship_date:date,p_carrier:val('carrier')||null,p_tracking_no:val('tracking')||null,p_note:val('note')||null})});await load();alert('出貨紀錄已回填');}
-  catch(err){alert('回填失敗：'+err.message);b.disabled=false;}
- };});
+ var orders=activeOrders(),rows=rowsFor(orders);
+ if($('staffShipPending')?.checked)rows=rows.filter(function(x){return x.remaining>0&&!['cancelled','completed'].includes(x.order.status);});
+ root.innerHTML='<p class="muted">符合篩選：'+orders.length+' 張訂單、'+rows.length+' 項商品。請匯出 Excel 填寫出貨狀況後，再匯入回填。</p><div style="overflow-x:auto"><table style="min-width:760px;width:100%"><thead><tr><th>訂單</th><th>廠商</th><th>商品</th><th>規格</th><th>訂購</th><th>已出</th><th>剩餘</th></tr></thead><tbody>'+rows.slice(0,300).map(function(x){return '<tr><td>ORD-'+String(x.order.tracking_id).padStart(6,'0')+'</td><td>'+e(x.vendor?.vendor_code||'')+' '+e(x.vendor?.name||'')+'</td><td>'+e(x.item.product_code||'')+' '+e(x.item.product_name||'')+'</td><td>'+e(x.item.variant||'')+'</td><td>'+x.quantity+'</td><td>'+x.shipped+'</td><td><b>'+x.remaining+'</b></td></tr>';}).join('')+'</tbody></table></div>';
 }
 async function load(){
  var root=$('staffShipResults');if(root)root.textContent='讀取正式訂單與出貨紀錄中…';
@@ -87,10 +72,40 @@ function excel(name,data){
  var url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'})),a=document.createElement('a');a.href=url;a.download=name+'.csv';a.click();setTimeout(function(){URL.revokeObjectURL(url);},1500);
  alert('Excel 元件尚未載入，已改匯出可用 Excel 開啟的 CSV 檔。');
 }
+var shipColumns=['ORD訂單編號','訂單日期','廠商編號','出貨廠商','訂單狀態','商品編號','商品名稱','規格','訂購量','已出貨量','未出貨量','單位','本次出貨數量(填寫)','實際出貨日(YYYY-MM-DD)','物流／貨運(選填)','託運號碼(選填)','備註(選填)','系統明細ID(請勿修改)'];
 function exportOrders(){
- var rows=rowsFor(activeOrders()),data=[['ORD訂單編號','訂單日期','廠商編號','出貨廠商','訂購客戶','訂單狀態','商品編號','商品名稱','規格','訂購量','已出貨量','未出貨量','單位']];
- rows.forEach(function(x){data.push(['ORD-'+String(x.order.tracking_id).padStart(6,'0'),x.order.order_date,x.vendor?.vendor_code||'',x.vendor?.name||'',x.order.buyer||'',status(x.order.status),x.item.product_code||'',x.item.product_name||'',x.item.variant||'',x.quantity,x.shipped,x.remaining,x.item.quantity_unit||'']);});
- excel('訂單出貨追蹤_'+new Date().toISOString().slice(0,10),data);
+ if(!loaded){alert('請先讀取資料');return;}
+ var rows=rowsFor(activeOrders());if($('staffShipPending').checked)rows=rows.filter(function(x){return x.remaining>0&&!['cancelled','completed'].includes(x.order.status);});
+ var data=[shipColumns];rows.forEach(function(x){data.push(['ORD-'+String(x.order.tracking_id).padStart(6,'0'),x.order.order_date,x.vendor?.vendor_code||'',x.vendor?.name||'',status(x.order.status),x.item.product_code||'',x.item.product_name||'',x.item.variant||'',x.quantity,x.shipped,x.remaining,x.item.quantity_unit||'','','','','','',x.item.id]);});
+ excel('出貨回填_'+new Date().toISOString().slice(0,10),data);
+}
+async function importShipmentWorkbook(file){
+ if(!file)return;var result=$('staffShipImportResult');result.textContent='正在驗證 Excel…';
+ try{
+  if(typeof XLSX==='undefined')throw Error('Excel 元件未載入，請檢查網路後重新整理');
+  var wb=XLSX.read(await file.arrayBuffer(),{type:'array'}),lines=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:false,defval:''});
+  if(!lines.length||shipColumns.some(function(h,i){return String(lines[0][i]).trim()!==h;}))throw Error('格式不符，請使用本系統匯出的 Excel');
+  var known=new Map(rowsFor(state.orders).map(function(x){return [x.item.id,x];})),seen=new Set(),work=[],issues=[];
+  for(var i=1;i<lines.length;i++){
+   var row=lines[i],input=String(row[12]||'').trim();if(!input)continue;
+   var id=String(row[17]||'').trim(),item=known.get(id),qty=Number(input),date=String(row[13]||'').trim(),label='第 '+(i+1)+' 列';
+   if(!item){issues.push(label+'：商品明細 ID 無效');continue;}
+   if(seen.has(id)){issues.push(label+'：同一商品重複填報');continue;}seen.add(id);
+   if(String(row[0]||'').trim()!=='ORD-'+String(item.order.tracking_id).padStart(6,'0')||String(row[5]||'').trim()!==String(item.item.product_code||'')){issues.push(label+'：訂單或貨號不一致');continue;}
+   if(!Number.isFinite(qty)||qty<=0||qty>item.remaining){issues.push(label+'：數量必須大於零且不能超過剩餘 '+item.remaining);continue;}
+   if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||Number.isNaN(Date.parse(date))){issues.push(label+'：出貨日請填 YYYY-MM-DD');continue;}
+   if(item.order.deleted_at||['cancelled','completed'].includes(item.order.status)){issues.push(label+'：訂單已結束');continue;}
+   work.push({id:id,qty:qty,date:date,carrier:String(row[14]||'').trim(),tracking:String(row[15]||'').trim(),note:String(row[16]||'').trim(),order:item.order.tracking_id});
+  }
+  if(issues.length){result.textContent='檢查發現 '+issues.length+' 筆錯誤，未寫入資料：\n'+issues.join('\n');return;}
+  if(!work.length){result.textContent='沒有填寫本次出貨數量的資料，未執行回填';return;}
+  var quantity=work.reduce(function(t,x){return t+x.qty;},0);
+  if(!confirm('確認將 Excel 中 '+work.length+' 項、共 '+quantity+' 件出貨資料回填正式系統？請勿重複匯入相同資料。')){result.textContent='已取消匯入';return;}
+  var ok=0,fail=[];
+  for(var w of work){try{await fetchApi('rpc/staff_record_shipment',{method:'POST',body:JSON.stringify({p_order_item_id:w.id,p_quantity:w.qty,p_ship_date:w.date,p_carrier:w.carrier||null,p_tracking_no:w.tracking||null,p_note:w.note||null})});ok++;}catch(err){fail.push('ORD-'+String(w.order).padStart(6,'0')+': '+err.message);}}
+  await load();result.textContent='匯入成功 '+ok+' 項'+(fail.length?'；失敗 '+fail.length+' 項：'+fail.join('；'):'');
+ }catch(err){result.textContent='匯入失敗：'+err.message;}
+ finally{$('staffShipImport').value='';}
 }
 function exportSummary(){
  var rows=rowsFor(activeOrders()),groups={};
@@ -103,11 +118,12 @@ function init(){
  var nav=document.querySelector('#adminView .tabs');if(!nav||$('tab-staff-shipping'))return;
  var tab=document.createElement('button');tab.className='tab';tab.textContent='出貨回填／Excel';tab.dataset.tab='staff-shipping';nav.appendChild(tab);
  var pane=document.createElement('div');pane.id='tab-staff-shipping';pane.className='tab-panel hidden';
- pane.innerHTML='<div class="card section-card"><h2>廠商出貨管理（小幫手回填）</h2><p class="muted">廠商帳號已停用。先下載 Excel 訂單及廠商彙總，向廠商確認出貨後，由管理員或小幫手記錄實際出貨數量、日期與託運資訊。</p><div class="filters" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr))"><label>廠商<select id="staffShipVendor"><option value="">全部廠商</option></select></label><label>訂單起日<input id="staffShipFrom" type="date"></label><label>訂單迄日<input id="staffShipTo" type="date"></label><label>搜尋<input id="staffShipSearch" placeholder="ORD 或訂貨人"></label></div><label style="display:flex;gap:8px;align-items:center"><input id="staffShipPending" type="checkbox" checked style="width:auto;min-height:0">只顯示待出貨商品</label><div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0"><button id="staffShipLoad" class="btn ghost">重新整理</button><button id="staffShipExportOrders" class="btn primary">匯出訂單 Excel</button><button id="staffShipExportSummary" class="btn secondary">匯出廠商彙總 Excel</button></div><div id="staffShipResults"></div></div>';
+ pane.innerHTML='<div class="card section-card"><h2>廠商出貨管理（小幫手回填）</h2><p class="muted">廠商帳號已停用。匯出 Excel 後於檔案填寫本次出貨數量、出貨日、物流、託運號碼、備註，再上傳匯入；不提供訂購客戶資料。</p><div class="filters" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr))"><label>廠商<select id="staffShipVendor"><option value="">全部廠商</option></select></label><label>訂單起日<input id="staffShipFrom" type="date"></label><label>訂單迄日<input id="staffShipTo" type="date"></label><label>搜尋<input id="staffShipSearch" placeholder="ORD 或訂貨人"></label></div><label style="display:flex;gap:8px;align-items:center"><input id="staffShipPending" type="checkbox" checked style="width:auto;min-height:0">只顯示待出貨商品</label><div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0"><button id="staffShipLoad" class="btn ghost">重新整理</button><button id="staffShipExportOrders" class="btn primary">匯出訂單 Excel</button><button id="staffShipExportSummary" class="btn secondary">匯出廠商彙總 Excel</button></div><label style="display:block;margin:12px 0">匯入已填寫的出貨 Excel <input id="staffShipImport" type="file" accept=".xlsx,.xls"></label><div id="staffShipImportResult" class="message" role="status" style="white-space:pre-wrap"></div><div id="staffShipResults"></div></div>';
  document.querySelector('#adminView').appendChild(pane);
  tab.onclick=function(){document.querySelectorAll('#adminView .tab').forEach(function(x){x.classList.toggle('active',x===tab);});document.querySelectorAll('#adminView .tab-panel').forEach(function(x){x.classList.add('hidden');});pane.classList.remove('hidden');if(!loaded)load();else render();};
  nav.querySelectorAll('.tab').forEach(function(x){if(x!==tab)x.addEventListener('click',function(){pane.classList.add('hidden');});});
  ['staffShipVendor','staffShipFrom','staffShipTo','staffShipSearch','staffShipPending'].forEach(function(id){$(id).addEventListener(id==='staffShipSearch'?'input':'change',render);});
+ $('staffShipImport').onchange=function(){importShipmentWorkbook(this.files[0]);};
  $('staffShipLoad').onclick=load;$('staffShipExportOrders').onclick=exportOrders;$('staffShipExportSummary').onclick=exportSummary;
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
