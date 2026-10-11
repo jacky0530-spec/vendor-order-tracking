@@ -130,3 +130,23 @@
 #customerView .catalog-section-switch button.active{background:#087f72;color:#fff;border-color:#087f72}
 #customerView .catalog-clearance-pill{background:#fff0e5;color:#9b3c07;font-weight:800;font-size:12px;margin-top:5px}
 @media(max-width:800px){#customerView .catalog-section-switch{display:grid;grid-template-columns:1fr 1fr}#customerView .catalog-section-switch button{padding:10px}}
+
+/* V2.64 客戶商城主選單位於深藍色頂部 */
+header.topbar #catalogCustomerNav{display:none}
+body:has(#customerView:not(.hidden)) header.topbar{flex-wrap:wrap;row-gap:6px;padding-bottom:9px}
+body:has(#customerView:not(.hidden)) header.topbar #catalogCustomerNav{
+  order:3;flex:0 0 100%;display:flex;flex-wrap:nowrap;gap:8px;margin:0;
+  padding:6px 0 2px;background:transparent;overflow-x:auto;overflow-y:hidden;
+  scrollbar-width:thin;scrollbar-color:#64748b transparent;-webkit-overflow-scrolling:touch
+}
+header.topbar #catalogCustomerNav button{
+  flex-shrink:0;min-height:40px;padding:8px 13px;border-radius:999px;
+  border:1px solid #65758e;background:#25334a;color:#f8fafc;
+  white-space:nowrap;font-size:14px;font-weight:700
+}
+header.topbar #catalogCustomerNav button.active{background:#0f766e;border-color:#2dd4bf;color:#fff}
+@media(max-width:800px){
+ body:has(#customerView:not(.hidden)) header.topbar{padding:11px 14px 7px;gap:6px}
+ body:has(#customerView:not(.hidden)) header.topbar #catalogCustomerNav{gap:6px}
+ header.topbar #catalogCustomerNav button{min-height:44px;padding:9px 14px}
+}
