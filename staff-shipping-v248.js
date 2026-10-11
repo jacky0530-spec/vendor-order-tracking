@@ -78,11 +78,11 @@ function normalizeShipDate(value,cell){
  if(!v&&cell&&cell.v!=null)v=String(cell.v).trim();
  if(cell&&cell.t==='n'&&typeof XLSX!=='undefined'){
   var d=XLSX.SSF.parse_date_code(Number(cell.v));if(d)v=d.y+'-'+String(d.m).padStart(2,'0')+'-'+String(d.d).padStart(2,'0');
- }else if(/^\\d{4,6}(?:\\.\\d+)?$/.test(v)&&Number(v)>20000&&Number(v)<90000&&typeof XLSX!=='undefined'){
+ }else if(/^\d{4,6}(?:\.\d+)?$/.test(v)&&Number(v)>20000&&Number(v)<90000&&typeof XLSX!=='undefined'){
   var d2=XLSX.SSF.parse_date_code(Number(v));if(d2)v=d2.y+'-'+String(d2.m).padStart(2,'0')+'-'+String(d2.d).padStart(2,'0');
  }
- v=v.replace(/[／/\\.]/g,'-').replace(/\\s+.*$/,'');
- var m=v.match(/^(\\d{4})-(\\d{1,2})-(\\d{1,2})$/);if(!m)return null;
+ v=v.replace(/[／/\.]/g,'-').replace(/\s+.*$/,'');
+ var m=v.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);if(!m)return null;
  var y=Number(m[1]),mo=Number(m[2]),day=Number(m[3]),dt=new Date(Date.UTC(y,mo-1,day));
  if(y<1900||dt.getUTCFullYear()!==y||dt.getUTCMonth()!==mo-1||dt.getUTCDate()!==day)return null;
  return String(y).padStart(4,'0')+'-'+String(mo).padStart(2,'0')+'-'+String(day).padStart(2,'0');
