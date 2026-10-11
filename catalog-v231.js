@@ -80,6 +80,7 @@ async function loadStorefront(){
     rest('catalog_variants?select=*&product_id='+encodeURIComponent(q)+'&active=eq.true&order=sort_order.asc')
   ]);
   state.images=rs[0]||[];state.variants=rs[1]||[];
+  try{var stats=await rpc('catalog_store_sales_stats',{});var map=new Map((stats||[]).map(function(x){return [x.product_id,x];}));state.products.forEach(function(p){var t=map.get(p.id);p.ordered_quantity=t?Number(t.ordered_quantity||0):0;p.max_sales_quantity=t&&t.max_sales_quantity!=null?Number(t.max_sales_quantity):null;});}catch(e){console.warn('商品銷售量讀取失敗',e);}
 }
 
 function ensureAdminTab(){
@@ -152,7 +153,7 @@ function paintAdminCustomerPreview(){
   $('catPreviewSummary').textContent='預覽：'+customer.customer_code+' '+customer.name+'｜'+(level?level.name:'未設定等級')+'｜可見商品 '+visible.length+' 筆';
   grid.innerHTML=visible.map(function(p){
     var im=firstImage(p.id),detail=previewCustomerPrice(p,customerId,levelId),s=saleState(p),open=saleOpen(p);
-    return '<div class="catalog-card"><div class="catalog-card-img">'+(im?'<img src="'+esc(publicImage(im.storage_path))+'" alt="">':'<span class="muted">尚無圖片</span>')+'</div><div class="catalog-card-body"><div class="catalog-code">'+esc(p.product_code)+'</div><div class="catalog-name">'+esc(p.name)+'</div><div class="catalog-price">'+money(detail.price)+'</div><div class="catalog-meta"><span class="catalog-pill '+(s==='現貨'?'good':'warn')+'">'+esc(s)+'</span><span class="catalog-pill">最低 '+esc(detail.minimum)+' '+esc(p.order_unit)+'</span>'+(p.sale_end_at?'<span class="catalog-pill">結單 '+esc(fmtDate(p.sale_end_at))+'</span>':'')+'</div><div class="catalog-card-actions"><button type="button" class="btn secondary" data-preview-product="'+esc(p.id)+'">查看商品</button><button type="button" class="btn primary" disabled>'+(open?'預覽不可購買':'不可購買')+'</button></div></div></div>';
+    return '<div class="catalog-card"><div class="catalog-card-img">'+(im?'<img src="'+esc(publicImage(im.storage_path))+'" alt="">':'<span class="muted">尚無圖片</span>')+'</div><div class="catalog-card-body"><div class="catalog-code">'+esc(p.product_code)+'</div><div class="catalog-name">'+esc(p.name)+'</div><div class="catalog-price">'+money(detail.price)+'</div><div class="catalog-meta"><span class="catalog-pill '+(s==='現貨'?'good':'warn')+'">'+esc(s)+'</span><span class="catalog-pill">最低 '+esc(detail.minimum)+' '+esc(p.order_unit)+'</span><span class="catalog-pill">已訂購 '+Number(p.ordered_quantity||0)+' '+esc(p.order_unit)+'</span>'+(p.max_sales_quantity!=null?'<span class="catalog-pill">總量上限 '+Number(p.max_sales_quantity)+' '+esc(p.order_unit)+'</span>':'')+(p.sale_end_at?'<span class="catalog-pill">結單 '+esc(fmtDate(p.sale_end_at))+'</span>':'')+'</div><div class="catalog-card-actions"><button type="button" class="btn secondary" data-preview-product="'+esc(p.id)+'">查看商品</button><button type="button" class="btn primary" disabled>'+(open?'預覽不可購買':'不可購買')+'</button></div></div></div>';
   }).join('')||'<div class="catalog-empty">這位客戶目前沒有可見的商品。</div>';
   grid.querySelectorAll('[data-preview-product]').forEach(function(b){b.onclick=function(){openAdminPreviewDetail(b.dataset.previewProduct,customerId,levelId);};});
 }
@@ -276,6 +277,7 @@ async function openProductEditor(id){
     '<label>出貨方<select id="catPFulfill">'+state.vendors.filter(function(v){return v.active;}).map(function(v){return '<option value="'+v.id+'" '+((p.fulfillment_vendor_id||(!id?'ba4326fc-b7a4-4b87-a16c-316c0f121eec':null))===v.id?'selected':'')+'>'+esc(v.vendor_code+' '+v.name)+'</option>';}).join('')+'</select></label>'+
     '<label>販售模式<select id="catPMode"><option value="preorder" '+(p.sale_mode==='preorder'?'selected':'')+'>預購</option><option value="in_stock" '+(p.sale_mode==='in_stock'?'selected':'')+'>現貨</option></select></label>'+
     '<label>一般批發價<input id="catPBase" type="number" min="0" step="0.01" value="'+esc(p.base_price||0)+'"></label>'+
+    '<label>銷售總量上限（空白＝不限）<input id="catPMaxSales" type="number" min="1" step="any" value="'+esc(p.max_sales_quantity==null?'':p.max_sales_quantity)+'" placeholder="不限量"></label>'+ 
     '<label>最低訂購量<input id="catPMin" type="number" min="0.01" step="any" value="'+esc(p.min_order_qty||1)+'"></label>'+
     '<label>單位<input id="catPUnit" value="'+esc(p.order_unit||'件')+'"></label>'+
     '<label>包裝/箱入<input id="catPPack" value="'+esc(p.pack_text||'')+'" placeholder="例如 36罐/箱"></label>'+
@@ -385,7 +387,8 @@ async function saveProduct(){
   var msg=$('catProductMsg'),save=$('catSaveProduct');save.disabled=true;save.textContent='儲存中…';msg.textContent='';
   try{
     syncVariantRows();
-    var payload={product_code:$('catPCode').value.trim(),name:$('catPName').value.trim(),description:$('catPDesc').value.trim()||null,fulfillment_vendor_id:$('catPFulfill').value,sale_mode:$('catPMode').value,base_price:Number($('catPBase').value||0),min_order_qty:Number($('catPMin').value||1),order_unit:$('catPUnit').value.trim()||'件',pack_text:$('catPPack').value.trim()||null,sale_start_at:$('catPStart').value?new Date($('catPStart').value).toISOString():null,sale_end_at:$('catPEnd').value?new Date($('catPEnd').value).toISOString():null,expected_ship_date:$('catPShip').value||null,visibility_mode:$('catPVisibility').value,published:$('catPPublished').checked,active:$('catPActive').checked,updated_at:new Date().toISOString()};
+    var payload={product_code:$('catPCode').value.trim(),name:$('catPName').value.trim(),description:$('catPDesc').value.trim()||null,fulfillment_vendor_id:$('catPFulfill').value,sale_mode:$('catPMode').value,base_price:Number($('catPBase').value||0),min_order_qty:Number($('catPMin').value||1),max_sales_quantity:$('catPMaxSales').value.trim()===''?null:Number($('catPMaxSales').value),order_unit:$('catPUnit').value.trim()||'件',pack_text:$('catPPack').value.trim()||null,sale_start_at:$('catPStart').value?new Date($('catPStart').value).toISOString():null,sale_end_at:$('catPEnd').value?new Date($('catPEnd').value).toISOString():null,expected_ship_date:$('catPShip').value||null,visibility_mode:$('catPVisibility').value,published:$('catPPublished').checked,active:$('catPActive').checked,updated_at:new Date().toISOString()};
+    if(payload.max_sales_quantity!==null&&(!Number.isFinite(payload.max_sales_quantity)||payload.max_sales_quantity<=0))throw new Error('銷售總量上限必須大於零');
     if(!payload.product_code||!payload.name)throw new Error('商品編號與商品名稱必填');
     // 停售／缺貨前提示既有待審 PUR 與未出貨 ORD，未完成訂單不自動取消。
     if(state.currentProduct){
@@ -465,12 +468,13 @@ async function switchCustomerTab(tab,b){
 }
 async function renderStore(){
   var area=$('catalogCustomerArea');area.innerHTML='<div class="catalog-empty">載入商品中…</div>';await loadStorefront();
-  area.innerHTML='<div class="catalog-store-wrap"><div class="catalog-store-toolbar"><input id="catStoreSearch" placeholder="搜尋商品編號、名稱"><select id="catStoreMode"><option value="">全部</option><option value="in_stock">現貨</option><option value="preorder">預購</option></select><button id="catRefreshStore" class="btn ghost">重新整理</button></div><div id="catStoreGrid" class="catalog-grid"></div></div>';paintStore();
-  $('catStoreSearch').addEventListener('input',paintStore);$('catStoreMode').addEventListener('change',paintStore);$('catRefreshStore').addEventListener('click',renderStore);
+  area.innerHTML='<div class="catalog-store-wrap"><div class="catalog-store-toolbar"><input id="catStoreSearch" placeholder="搜尋商品編號、名稱"><select id="catStoreMode"><option value="">全部</option><option value="in_stock">現貨</option><option value="preorder">預購</option></select><select id="catStoreSort" aria-label="商品排序"><option value="new">最新上架優先</option><option value="popular">訂購數量由多到少</option><option value="old">上架時間由舊到新</option></select><button id="catRefreshStore" class="btn ghost">重新整理</button></div><div id="catStoreGrid" class="catalog-grid"></div></div>';paintStore();
+  $('catStoreSearch').addEventListener('input',paintStore);$('catStoreMode').addEventListener('change',paintStore);$('catStoreSort').addEventListener('change',paintStore);$('catRefreshStore').addEventListener('click',renderStore);
 }
 function paintStore(){
   var grid=$('catStoreGrid');if(!grid)return;var q=($('catStoreSearch').value||'').toLowerCase(),mode=$('catStoreMode').value;
   var list=state.products.filter(function(p){return (!q||(p.product_code+' '+p.name).toLowerCase().indexOf(q)>=0)&&(!mode||p.sale_mode===mode);});
+  var sort=$('catStoreSort')?.value||'new';list.sort(function(a,b){var bd=Date.parse(b.created_at||0)||0,ad=Date.parse(a.created_at||0)||0;return sort==='popular'?(Number(b.ordered_quantity||0)-Number(a.ordered_quantity||0))||(bd-ad):sort==='old'?ad-bd:bd-ad;});
   grid.innerHTML=list.map(function(p){var im=firstImage(p.id),s=saleState(p),open=saleOpen(p);return '<div class="catalog-card" data-store-product="'+p.id+'"><div class="catalog-card-img">'+(im?'<img src="'+esc(publicImage(im.storage_path))+'">':'<span class="muted">尚無圖片</span>')+'</div><div class="catalog-card-body"><div class="catalog-code">'+esc(p.product_code)+'</div><div class="catalog-name">'+esc(p.name)+'</div><div class="catalog-price">'+money(p.effective_price)+'</div><div class="catalog-meta"><span class="catalog-pill '+(s==='現貨'?'good':'warn')+'">'+esc(s)+'</span><span class="catalog-pill">最低 '+esc(p.effective_min_order_qty)+' '+esc(p.order_unit)+'</span>'+(p.sale_end_at?'<span class="catalog-pill">結單 '+esc(fmtDate(p.sale_end_at))+'</span>':'')+'</div><div class="catalog-card-actions"><button class="btn secondary" data-store-view="'+p.id+'">查看商品</button><button class="btn primary" data-store-quick="'+p.id+'" '+(open?'':'disabled')+'>加入購物車</button></div></div></div>';}).join('')||'<div class="catalog-empty">目前沒有可購買商品。</div>';
   grid.querySelectorAll('.catalog-card-img').forEach(function(el){el.setAttribute('role','button');el.tabIndex=0;el.title='查看商品規格與訂購';el.onclick=function(){openStoreDetail(el.closest('[data-store-product]').dataset.storeProduct);};el.onkeydown=function(ev){if(ev.key==='Enter'){ev.preventDefault();el.click();}};});
   grid.querySelectorAll('[data-store-view]').forEach(function(b){b.onclick=function(){openStoreDetail(b.dataset.storeView);};});
