@@ -107,3 +107,15 @@
  #customerView .catalog-cart-row{grid-template-columns:64px minmax(0,1fr) auto}
  #customerView .catalog-cart-row .qty,#customerView .catalog-cart-row .price{grid-column:2/-1}
 }
+
+/* V2.58 客戶商品詳情：文案複製與圖片區保持可見 */
+#catStoreModal .catalog-product-detail{align-items:start}
+#catStoreModal .catalog-sticky-gallery{position:sticky;top:54px;align-self:start;min-width:0}
+#catStoreModal .catalog-sticky-gallery .catalog-main-image{max-height:min(42vh,390px);object-fit:contain}
+#catStoreModal .catalog-copy-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:12px}
+#catStoreModal .catalog-copy-bar button{min-height:44px}
+#catStoreModal .catalog-product-copy{overflow-wrap:anywhere}
+@media(max-width:800px){
+ #catStoreModal .catalog-sticky-gallery{position:static}
+ #catStoreModal .catalog-sticky-gallery .catalog-main-image{max-height:40vh}
+}
