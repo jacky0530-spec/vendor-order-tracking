@@ -16,7 +16,7 @@ async function authFetch(url,opt){
 async function rest(path,opt){
   opt=opt||{}; var headers=Object.assign({'Content-Type':'application/json'},opt.headers||{});
   var res=await authFetch(SB+'/rest/v1/'+path,Object.assign({},opt,{headers:headers}));
-  var txt=await res.text(); if(!res.ok){var m=txt;try{var d=JSON.parse(txt);m=d.message||d.hint||d.details||txt;}catch(e){} throw new Error(m||('HTTP '+res.status));}
+  var txt=await res.text(); if(!res.ok){if(res.status===401||/JWT expired|invalid jwt|token.*expired/i.test(txt))throw new Error('登入已逾期，請重新登入後再操作。');var m=txt;try{var d=JSON.parse(txt);m=d.message||d.hint||d.details||txt;}catch(e){} throw new Error(m||('HTTP '+res.status));}
   return txt?JSON.parse(txt):null;
 }
 async function rpc(name,body){
@@ -605,7 +605,7 @@ function editCustomerAddress(a){
 function renderCustomerPassword(){
   var area=$('catalogCustomerArea');area.innerHTML='<div class="card inner-card" style="max-width:520px"><h2>修改密碼</h2><label>新密碼<input id="catCustomerPwd1" type="password" placeholder="至少 8 碼"></label><label>再次輸入<input id="catCustomerPwd2" type="password"></label><button id="catCustomerPwdBtn" class="btn primary" style="margin-top:10px">儲存新密碼</button><div id="catCustomerPwdMsg" class="message"></div></div>';$('catCustomerPwdBtn').onclick=async function(){var m=$('catCustomerPwdMsg'),p1=$('catCustomerPwd1').value,p2=$('catCustomerPwd2').value;if(p1.length<8){m.textContent='密碼至少 8 碼';m.className='message error';return;}if(p1!==p2){m.textContent='兩次密碼不一致';m.className='message error';return;}try{this.disabled=true;await edge({action:'change_password',password:p1});m.textContent='密碼已修改';m.className='message success';}catch(e){m.textContent=e.message;m.className='message error';}finally{this.disabled=false;}};
 }
-function showErr(e){console.error(e);alert('商城功能發生錯誤：'+e.message);}
+function showErr(e){console.error(e);var msg=String(e&&e.message||e);if(/JWT expired|invalid jwt|token.*expired|登入已過期|登入已逾期/i.test(msg)){alert('登入已逾期，請重新登入後再操作。');return;}alert('商城功能發生錯誤：'+msg);}
 async function activate(){
   try{
     await loadProfile();if(!state.profile)return;
