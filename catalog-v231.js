@@ -545,7 +545,7 @@ async function renderAdminPurchaseRequests(){
   var vid=[...new Set(items.filter(function(i){return i.variant_id;}).map(function(i){return i.variant_id;}))];
   var variantStatuses=vid.length?await rest('catalog_variants?select=id,name,sale_status&id=in.('+vid.map(encodeURIComponent).join(',')+')'):[];
   var statusById={};variantStatuses.forEach(function(v){statusById[v.id]=v.sale_status;});
-  var previousCustomer=el.dataset.purchaseCustomer||'',previousHide=el.dataset.purchaseHideApproved==='1';
+  var previousCustomer=el.dataset.purchaseCustomer||'',previousHide=el.dataset.purchaseHideApproved!=='0';
   var customers=[...new Map(requests.map(function(r){return [r.customer_id,{id:r.customer_id,name:r.buyer||'未命名客戶'}];})).values()].sort(function(a,b){return a.name.localeCompare(b.name,'zh-Hant');});
   el.innerHTML='<div class="catalog-head"><h3>客戶採購單審核</h3><button class="btn ghost" id="catRequestReload">重新整理</button></div><p class="muted">待確認採購單可逐筆調整數量或刪除商品，系統會重新計算小計及總額；核准後才建立 ORD。</p>'+
     '<div class="catalog-purchase-filters" style="grid-template-columns:minmax(180px,1fr) auto;align-items:center"><label style="margin:0">篩選客戶<select id="catRequestCustomerFilter" style="margin-top:5px"><option value="">全部客戶</option>'+customers.map(function(c){return '<option value="'+esc(c.id)+'" '+(previousCustomer===c.id?'selected':'')+'>'+esc(c.name)+'</option>';}).join('')+'</select></label><label style="display:flex;gap:8px;align-items:center;margin:0;white-space:nowrap"><input id="catRequestHideApproved" type="checkbox" style="width:auto;min-height:auto" '+(previousHide?'checked':'')+'>隱藏已成立訂單的採購單</label></div><div id="catRequestCount" class="muted" style="margin-bottom:10px"></div>'+
