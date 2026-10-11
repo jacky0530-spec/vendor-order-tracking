@@ -74,6 +74,7 @@ function excel(name,data){
 }
 var shipColumns=['ORD訂單編號','訂單日期','廠商編號','出貨廠商','訂單狀態','商品編號','商品名稱','規格','訂購量','已出貨量','未出貨量','單位','本次出貨數量(填寫)','實際出貨日(YYYY-MM-DD)','物流／貨運(選填)','託運號碼(選填)','備註(選填)'];
 function exportOrders(){
+ try{
  if(!loaded){alert('請先讀取資料');return;}
  var rows=rowsFor(activeOrders());if($('staffShipPending').checked)rows=rows.filter(function(x){return x.remaining>0&&!['cancelled','completed'].includes(x.order.status);});
  var data=[shipColumns];rows.forEach(function(x){data.push(['ORD-'+String(x.order.tracking_id).padStart(6,'0'),x.order.order_date,x.vendor?.vendor_code||'',x.vendor?.name||'',status(x.order.status),x.item.product_code||'',x.item.product_name||'',x.item.variant||'',x.quantity,x.shipped,x.remaining,x.item.quantity_unit||'','','','','','',x.item.id]);});
@@ -84,8 +85,11 @@ function exportOrders(){
  for(var i=1;i<data.length;i++)meta.push([i+1,data[i][17]]);
  XLSX.utils.book_append_sheet(book,XLSX.utils.aoa_to_sheet(visible),'出貨回填');
  XLSX.utils.book_append_sheet(book,XLSX.utils.aoa_to_sheet(meta),'_internal_rows');
- book.Workbook.Sheets[1].Hidden=1;
+ book.Workbook=book.Workbook||{};
+ book.Workbook.Sheets=[{Hidden:0},{Hidden:1}];
  XLSX.writeFile(book,'出貨回填_'+new Date().toISOString().slice(0,10)+'.xlsx');
+ var notice=$('staffShipImportResult');if(notice)notice.textContent='Excel 已產生，請查看瀏覽器下載項目。';
+ }catch(err){var n=$('staffShipImportResult');if(n)n.textContent='Excel 匯出失敗：'+err.message;alert('Excel 匯出失敗：'+err.message);}
 }
 async function importShipmentWorkbook(file){
  if(!file)return;var result=$('staffShipImportResult');result.textContent='正在驗證 Excel…';
