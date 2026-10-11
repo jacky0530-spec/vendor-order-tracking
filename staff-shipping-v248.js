@@ -131,6 +131,7 @@ async function importShipmentWorkbook(file){
    if(String(row[0]||'').trim()!=='ORD-'+String(item.order.tracking_id).padStart(6,'0')||String(row[5]||'').trim()!==String(item.item.product_code||'')){issues.push(label+'：訂單或貨號不一致');continue;}
    if(!Number.isFinite(qty)||qty<=0||qty>item.remaining){issues.push(label+'：數量必須大於零且不能超過剩餘 '+item.remaining);continue;}
    if(!date){issues.push(label+'：出貨日請填 YYYY-MM-DD');continue;}
+   if(date<item.order.order_date){issues.push(label+'：出貨日 '+date+' 不可早於訂購日 '+item.order.order_date);continue;}
    if(item.order.deleted_at||['cancelled','completed'].includes(item.order.status)){issues.push(label+'：訂單已結束');continue;}
    work.push({id:id,qty:qty,date:date,carrier:String(row[14]||'').trim(),tracking:String(row[15]||'').trim(),note:String(row[16]||'').trim(),order:item.order.tracking_id});
   }
