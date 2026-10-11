@@ -123,3 +123,10 @@
 /* V2.60: four-field storefront toolbar with responsive ordering */
 #customerView .catalog-store-toolbar{grid-template-columns:minmax(180px,2fr) minmax(115px,1fr) minmax(180px,1fr) auto}
 @media(max-width:850px){#customerView .catalog-store-toolbar{grid-template-columns:repeat(2,minmax(0,1fr))}#customerView .catalog-store-toolbar input{grid-column:1/-1}#customerView .catalog-store-toolbar button{min-height:44px}}
+
+/* V2.62 出清優惠專區 */
+#customerView .catalog-section-switch{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+#customerView .catalog-section-switch button{border:1px solid #d0d5dd;background:#fff;color:#344054;border-radius:12px;padding:11px 18px;font-size:15px;font-weight:700;cursor:pointer;min-height:44px}
+#customerView .catalog-section-switch button.active{background:#087f72;color:#fff;border-color:#087f72}
+#customerView .catalog-clearance-pill{background:#fff0e5;color:#9b3c07;font-weight:800;font-size:12px;margin-top:5px}
+@media(max-width:800px){#customerView .catalog-section-switch{display:grid;grid-template-columns:1fr 1fr}#customerView .catalog-section-switch button{padding:10px}}
