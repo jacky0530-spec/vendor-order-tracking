@@ -194,3 +194,30 @@ header.topbar #catalogCustomerNav button.active{background:#0f766e;border-color:
  #catCustomerLinkReview .cat-link-manual{padding:10px}
  #catCustomerLinkReview .cat-link-order-row{flex-direction:column;align-items:stretch}
 }
+
+/* V2.75 管理員／小幫手：客戶收件資料新增與編輯 */
+#catAddressAdminModal .cat-address-manager{max-width:940px;width:min(94vw,940px);max-height:90vh;overflow-y:auto;box-sizing:border-box}
+#catAddressAdminModal .cat-address-toolbar{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:12px 0;flex-wrap:wrap}
+#catAddressAdminModal .cat-address-list{max-height:50vh;overflow-y:auto}
+#catAddressAdminModal .cat-address-entry{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 14px;margin-bottom:8px}
+#catAddressAdminModal .cat-address-entry-info{min-width:0;overflow-wrap:anywhere;line-height:1.6;font-size:13px}
+#catAddressAdminModal .cat-address-entry-info b{font-size:15px}
+#catAddressAdminModal .cat-address-entry>button{flex:0 0 auto;min-height:40px}
+#catAddressAdminModal .cat-address-edit{padding:14px;border:1px solid #b7d7cd;background:#f5faf8;border-radius:12px;margin:12px 0}
+#catAddressAdminModal .cat-address-edit h3{margin:0 0 10px;font-size:17px}
+#catAddressAdminModal .cat-address-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 14px}
+#catAddressAdminModal .cat-address-form>label{font-size:13px;font-weight:600;min-width:0}
+#catAddressAdminModal .cat-address-form input:not([type="checkbox"]),
+#catAddressAdminModal .cat-address-form textarea{width:100%;box-sizing:border-box;min-height:40px;margin-top:5px;font-size:15px}
+#catAddressAdminModal .cat-address-form textarea{min-height:80px;resize:vertical}
+#catAddressAdminModal .cat-address-wide{grid-column:1/-1}
+#catAddressAdminModal .cat-address-check{display:flex;align-items:center;gap:8px;grid-column:1/-1}
+#catAddressAdminModal .cat-address-check input{height:19px;width:19px}
+#catAddressAdminModal .cat-address-required{color:#bc302b}
+#catAddressAdminModal .cat-address-actions{display:flex;gap:10px;flex-wrap:wrap}
+@media(max-width:700px){
+ #catAddressAdminModal .cat-address-form{grid-template-columns:minmax(0,1fr)}
+ #catAddressAdminModal .cat-address-entry{align-items:flex-start;flex-direction:column}
+ #catAddressAdminModal .cat-address-entry>button{width:100%}
+ #catAddressAdminModal .cat-address-manager{width:96vw}
+}
