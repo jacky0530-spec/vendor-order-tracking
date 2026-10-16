@@ -71,7 +71,7 @@ async function loadCommonAdmin(){
   var rs=await Promise.all([
     rest('customer_levels?select=*&order=sort_order.asc'),
     rest('vendors?select=id,vendor_code,name,active&order=vendor_code.asc'),
-    rest('customers?select=id,customer_code,name,active,import_account_code,import_short_name,import_category&order=customer_code.asc'),
+    rest('customers?select=id,customer_code,name,contact_name,phone,active,import_account_code,import_short_name,import_category&order=customer_code.asc'),
     rest('catalog_products?select=*&order=created_at.desc'),
     rest('catalog_product_images?select=*&order=sort_order.asc,created_at.asc'),
     rest('catalog_variants?select=*&order=sort_order.asc')
@@ -279,57 +279,203 @@ async function renderCustomerAdmin(){
   };
 
   async function paintOrderLinkReview(search){
-    var host=$('catCustomerLinkReview');if(!host)return;
-    host.innerHTML='<h3>LINE 訂單與客戶關聯</h3><div class="muted">正在整理關聯資料…</div>';
-    try{
-      var data=await rpc('catalog_customer_link_review',{p_limit:35,p_search:search||null});
-      if(!host.isConnected)return;
-      var titles={no_verified_match:'尚未找到可核實的客戶',shipping_ambiguous:'收件資料符合多位客戶',buyer_receiver_conflict:'訂購人與寄貨對象歸屬衝突',buyer_ambiguous:'訂購人名稱有重複',未檢查:'尚未檢查'};
-      var rows=data.results||[];
-      host.innerHTML='<div class="catalog-head"><h3>LINE 訂單與客戶關聯</h3><button type="button" id="catLinkRefresh" class="btn ghost">重新比對未關聯 ORD</button></div>'+
-        '<p class="muted">已關聯 <b>'+Number(data.linked||0)+'</b>／'+Number(data.line_orders||0)+' 張有效 LINE 訂單，還有 <b style="color:#b42318">'+Number(data.unlinked||0)+'</b> 張待確認。只會自動關聯唯一且可靠的比對結果，不改動訂單內容或出貨歷程。</p>'+
-        '<div class="catalog-toolbar"><input id="catLinkSearch" placeholder="搜尋 ORD 編號、訂購人或收件人" value="'+esc(search||'')+'"><button id="catLinkSearchBtn" class="btn ghost" type="button">搜尋待確認訂單</button></div>'+
-        '<div style="max-height:280px;overflow:auto;border:1px solid #e1e6ed;border-radius:12px">'+
-          (rows.map(function(o){return '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 12px;border-bottom:1px solid #edf0f4">'+
+  var host=$('catCustomerLinkReview');
+  if(!host)return;
+  host.innerHTML='<h3>LINE 訂單與客戶關聯</h3><div class="muted">正在讀取待關聯訂單…</div>';
+  try{
+    var data=await rpc('catalog_customer_link_review',{p_limit:35,p_search:search||null});
+    if(!host.isConnected)return;
+    var reasons={
+      no_verified_match:'尚未找到可核實的客戶',
+      shipping_ambiguous:'寄貨資料符合多位客戶',
+      buyer_receiver_conflict:'訂購人與寄貨歸屬衝突',
+      buyer_ambiguous:'訂購人名稱有重複',
+      未檢查:'尚未檢查'
+    };
+    var rows=data.results||[];
+    host.innerHTML=
+      '<div class="catalog-head"><h3>LINE 訂單與客戶關聯</h3><button type="button" id="catLinkRefresh" class="btn ghost">重新比對未關聯 ORD</button></div>'+
+      '<p class="muted">已關聯 <b>'+Number(data.linked||0)+'</b>／'+Number(data.line_orders||0)+' 張有效 LINE 訂單，仍有 <b style="color:#b42318">'+Number(data.unlinked||0)+'</b> 張待確認。請先核對訂單詳情，再指定帳款主客戶。</p>'+
+      '<div class="catalog-toolbar"><input id="catLinkSearch" aria-label="搜尋未關聯訂單" placeholder="搜尋 ORD 編號、訂購人或收件人" value="'+esc(search||'')+'"><button id="catLinkSearchBtn" class="btn ghost" type="button">搜尋待確認訂單</button></div>'+
+      '<div class="cat-link-order-list">'+
+        (rows.map(function(o){
+          return '<div class="cat-link-order-row">'+
             '<div><b>'+esc(o.order_no)+'</b>｜'+esc(o.buyer||'（未填訂購人）')+' → '+esc(o.receiver||'（未填收件人）')+
-            '<div class="muted" style="font-size:12px">'+esc(titles[o.reason]||o.reason||'待確認')+'</div></div>'+
-            '<button type="button" class="btn small ghost" data-cat-pick-unlinked="'+esc(o.order_id)+'">指定客戶</button></div>';}).join('')||
-          '<div style="padding:16px" class="muted">沒有符合的待確認訂單。</div>')+'</div>'+
-        '<div id="catLinkManual" class="catalog-block hidden" style="margin-top:12px">'+
-          '<b id="catLinkManualTitle"></b><div class="catalog-form-grid" style="margin-top:8px">'+
-          '<label>帳款主客戶<select id="catLinkCustomerSelect"><option value="">請選擇主客戶</option>'+
-            state.customers.filter(function(c){return c.active;}).map(function(c){return '<option value="'+esc(c.id)+'">'+esc(c.customer_code+'｜'+c.name)+'</option>';}).join('')+'</select></label>'+
-          '<label>寄貨選項（非必要）<select id="catLinkAddressSelect"><option value="">不指定寄貨選項</option></select></label></div>'+
-          '<button type="button" id="catLinkManualSave" class="btn primary">確認建立此 ORD 客戶關聯</button>'+
-          '<button type="button" id="catLinkManualCancel" class="btn ghost">取消</button>'+
-          '<div id="catLinkManualMsg" class="message"></div></div>';
-      $('catLinkSearchBtn').onclick=function(){paintOrderLinkReview($('catLinkSearch').value.trim());};
-      $('catLinkSearch').onkeydown=function(e){if(e.key==='Enter')paintOrderLinkReview(this.value.trim());};
-      $('catLinkRefresh').onclick=async function(){this.disabled=true;try{var out=await rpc('catalog_relink_order_customers',{});alert('重新比對完成：新增關聯 '+out.linked+' 張、待確認 '+out.pending_review+' 張。');await paintOrderLinkReview(search);}catch(e){alert('重新比對失敗：'+e.message);this.disabled=false;}};
-      var selected=null;
-      host.querySelectorAll('[data-cat-pick-unlinked]').forEach(function(b){b.onclick=function(){
-        selected=b.dataset.catPickUnlinked;var item=rows.find(function(x){return x.order_id===selected;});
-        $('catLinkManual').classList.remove('hidden');$('catLinkManualTitle').textContent=(item?.order_no||'ORD')+'｜'+(item?.buyer||'')+' → '+(item?.receiver||'');
-        $('catLinkCustomerSelect').value='';$('catLinkAddressSelect').innerHTML='<option value="">不指定寄貨選項</option>';
-        $('catLinkManualMsg').textContent='';$('catLinkManual').scrollIntoView({behavior:'smooth',block:'nearest'});
-      };});
-      $('catLinkCustomerSelect').onchange=function(){
-        var cid=this.value;var opts=addresses.filter(function(a){return a.active&&a.customer_id===cid;});
-        $('catLinkAddressSelect').innerHTML='<option value="">不指定寄貨選項</option>'+opts.map(function(a){return '<option value="'+esc(a.id)+'">'+esc((a.import_ship_code||'')+'｜'+(a.receiver_name||'')+'｜'+(a.address||'（無地址）'))+'</option>';}).join('');
+            '<div class="muted" style="font-size:12px">'+esc(reasons[o.reason]||o.reason||'待確認')+'</div></div>'+
+            '<button type="button" class="btn small ghost" data-cat-pick-unlinked="'+esc(o.order_id)+'">查看資訊／指定客戶</button></div>';
+        }).join('')||'<div class="catalog-empty">沒有符合的待確認訂單。</div>')+
+      '</div>'+
+      '<div id="catLinkManual" class="catalog-block hidden cat-link-manual">'+
+        '<h4 id="catLinkManualTitle"></h4>'+
+        '<div id="catLinkOrderDetail" class="cat-link-order-detail" aria-live="polite"></div>'+
+        '<div class="cat-link-select-grid">'+
+          '<div class="cat-link-customer-search">'+
+            '<label for="catLinkCustomerQuery">搜尋帳款主客戶（編號／名稱／簡稱）</label>'+
+            '<input type="search" id="catLinkCustomerQuery" autocomplete="off" placeholder="例如 C107、麥麥、莊敬" aria-controls="catLinkCustomerMatches">'+
+            '<div id="catLinkCustomerMatches" class="cat-link-customer-results" aria-live="polite">輸入客戶編號、名稱或簡稱即可搜尋。</div>'+
+            '<div id="catLinkChosenCustomer" class="cat-link-chosen" aria-live="polite">尚未選擇帳款主客戶</div>'+
+          '</div>'+
+          '<div>'+
+            '<label for="catLinkAddressQuery">搜尋寄貨選項（非必要）</label>'+
+            '<input type="search" id="catLinkAddressQuery" autocomplete="off" placeholder="姓名、寄貨編號、電話或地址" disabled>'+
+            '<label for="catLinkAddressSelect">確認寄貨選項</label>'+
+            '<select id="catLinkAddressSelect" disabled><option value="">請先選擇主客戶</option></select>'+
+            '<div id="catLinkAddressCount" class="muted" style="font-size:12px"></div>'+
+          '</div>'+
+        '</div>'+
+        '<div class="cat-link-actions"><button id="catLinkManualSave" type="button" class="btn primary" disabled>確認建立此 ORD 客戶關聯</button>'+
+        '<button id="catLinkManualCancel" type="button" class="btn ghost">取消</button></div>'+
+        '<div id="catLinkManualMsg" role="status" class="message"></div>'+
+      '</div>';
+
+    $('catLinkSearchBtn').onclick=function(){paintOrderLinkReview($('catLinkSearch').value.trim());};
+    $('catLinkSearch').onkeydown=function(e){if(e.key==='Enter')paintOrderLinkReview(this.value.trim());};
+    $('catLinkRefresh').onclick=async function(){
+      this.disabled=true;
+      try{
+        var outcome=await rpc('catalog_relink_order_customers',{});
+        alert('重新比對完成：新增關聯 '+outcome.linked+' 張、待確認 '+outcome.pending_review+' 張。');
+        await paintOrderLinkReview(search);
+      }catch(err){alert('重新比對失敗：'+err.message);this.disabled=false;}
+    };
+
+    var selectedOrderId=null,selectedCustomerId=null,detailReady=false,detailRequestId=0;
+    var customers=state.customers.filter(function(c){return c.active;}).slice().sort(function(a,b){
+      return String(a.customer_code||'').localeCompare(String(b.customer_code||''),'zh-Hant',{numeric:true});
+    });
+    function normalized(t){return String(t||'').toLowerCase().replace(/\s+/g,'');}
+    function updateSaveButton(){$('catLinkManualSave').disabled=!detailReady||!selectedOrderId||!selectedCustomerId;}
+    function renderCustomerMatches(){
+      var target=$('catLinkCustomerMatches'),q=normalized($('catLinkCustomerQuery').value.trim());
+      if(selectedCustomerId){target.innerHTML='';target.classList.add('hidden');return;}
+      target.classList.remove('hidden');
+      if(!q){target.innerHTML='<div class="muted">輸入主客戶編號、名稱或簡稱搜尋。</div>';return;}
+      var matches=customers.filter(function(c){
+        return normalized(c.customer_code+' '+c.name+' '+(c.import_short_name||'')+' '+(c.contact_name||'')+' '+(c.phone||'')).includes(q);
+      });
+      var shown=matches.slice(0,35);
+      target.innerHTML=(shown.map(function(c){
+        var count=addresses.filter(function(a){return a.customer_id===c.id&&a.active;}).length;
+        return '<button type="button" class="cat-link-customer-result" data-cat-select-customer="'+esc(c.id)+'">'+
+          '<b>'+esc(c.customer_code)+'｜'+esc(c.name)+'</b>'+
+          '<span>'+esc(c.import_short_name||c.contact_name||'')+'　寄貨選項 '+count+' 筆</span></button>';
+      }).join('')||'<div class="muted">查無符合的主客戶，請換關鍵字。</div>')+
+        (matches.length>35?'<div class="muted">共 '+matches.length+' 位，請輸入更多字縮小範圍。</div>':'');
+      target.querySelectorAll('[data-cat-select-customer]').forEach(function(b){b.onclick=function(){chooseCustomer(b.dataset.catSelectCustomer);};});
+    }
+    function renderAddressOptions(){
+      var inp=$('catLinkAddressQuery'),pick=$('catLinkAddressSelect'),summary=$('catLinkAddressCount');
+      if(!selectedCustomerId){inp.disabled=true;pick.disabled=true;pick.innerHTML='<option value="">請先選擇主客戶</option>';summary.textContent='';return;}
+      inp.disabled=false;pick.disabled=false;
+      var all=addresses.filter(function(a){return a.active&&a.customer_id===selectedCustomerId;});
+      var q=normalized(inp.value);
+      var shown=all.filter(function(a){
+        return !q||normalized((a.import_ship_code||'')+' '+(a.receiver_name||'')+' '+(a.import_short_name||'')+' '+(a.phone||'')+' '+(a.address||'')).includes(q);
+      });
+      pick.innerHTML='<option value="">不指定寄貨選項（僅關聯主客戶）</option>'+shown.map(function(a){
+        return '<option value="'+esc(a.id)+'">'+esc((a.import_ship_code||'地址')+'｜'+(a.receiver_name||'未填收件人')+'｜'+(a.phone||'無電話')+'｜'+(a.address||'無地址'))+'</option>';
+      }).join('');
+      summary.textContent='顯示 '+shown.length+'／'+all.length+' 個寄貨選項。請核對收件人及地址後再選擇。';
+    }
+    function chooseCustomer(customerId){
+      var c=customers.find(function(v){return v.id===customerId;});
+      if(!c)return;
+      selectedCustomerId=c.id;
+      $('catLinkCustomerQuery').value=c.customer_code+'｜'+c.name;
+      $('catLinkChosenCustomer').innerHTML='<b>已選擇帳款主客戶：'+esc(c.customer_code)+'｜'+esc(c.name)+'</b>'+
+        '<button type="button" id="catLinkChangeCustomer" class="btn small ghost">變更</button>';
+      $('catLinkChangeCustomer').onclick=function(){
+        selectedCustomerId=null;$('catLinkCustomerQuery').value='';$('catLinkChosenCustomer').textContent='尚未選擇帳款主客戶';
+        $('catLinkAddressQuery').value='';renderAddressOptions();renderCustomerMatches();updateSaveButton();$('catLinkCustomerQuery').focus();
       };
-      $('catLinkManualCancel').onclick=function(){$('catLinkManual').classList.add('hidden');};
-      $('catLinkManualSave').onclick=async function(){
-        if(!selected||!$('catLinkCustomerSelect').value){$('catLinkManualMsg').textContent='請先選擇帳款主客戶';return;}
-        if(!confirm('確定為 '+$('catLinkManualTitle').textContent+' 指定客戶？此操作會記錄操作人員。'))return;
-        this.disabled=true;
+      $('catLinkAddressQuery').value='';renderAddressOptions();renderCustomerMatches();updateSaveButton();
+    }
+    $('catLinkCustomerQuery').oninput=function(){
+      selectedCustomerId=null;$('catLinkChosenCustomer').textContent='尚未選擇帳款主客戶';
+      $('catLinkAddressQuery').value='';renderAddressOptions();renderCustomerMatches();updateSaveButton();
+    };
+    $('catLinkCustomerQuery').onkeydown=function(e){
+      if(e.key==='Enter'){
+        var first=$('catLinkCustomerMatches').querySelector('[data-cat-select-customer]');
+        if(first){e.preventDefault();first.click();}
+      }
+    };
+    $('catLinkAddressQuery').oninput=renderAddressOptions;
+
+    function renderOrderDetail(d){
+      var items=d.items||[];
+      var html='<div class="cat-link-order-facts">'+
+        '<div><b>訂單日期</b><span>'+esc(d.order_date||'—')+'</span></div>'+
+        '<div><b>出貨廠商</b><span>'+esc([d.vendor_code,d.vendor_name].filter(Boolean).join('｜')||d.source_shipper_text||'—')+'</span></div>'+
+        '<div><b>訂購人</b><span>'+esc(d.buyer||'未提供')+'</span></div>'+
+        '<div><b>收件人</b><span>'+esc(d.receiver||'未提供')+'</span></div>'+
+        '<div><b>收件電話</b><span>'+esc(d.receiver_phone||'未提供')+'</span></div>'+
+        '<div><b>訂單狀態</b><span>'+esc(d.status||'—')+'</span></div>'+
+        '<div class="cat-link-full"><b>完整收貨地址</b><span>'+esc(d.receiver_address||'未提供')+'</span></div>'+
+        '<div class="cat-link-full"><b>預計交期</b><span>'+esc(d.expected_deadline||'—')+'</span></div>'+
+      '</div>'+
+      '<div class="cat-link-items-wrap"><table><thead><tr>'+
+        '<th>商品編號／名稱</th><th>規格</th><th>訂購量</th><th>已出貨</th></tr></thead><tbody>'+
+        (items.map(function(x){return '<tr><td>'+esc(x.product_code||'')+' '+esc(x.product_name||'')+'</td>'+
+          '<td>'+esc(x.variant||'—')+'</td><td>'+esc(x.quantity??0)+' '+esc(x.unit||'')+'</td>'+
+          '<td>'+esc(x.shipped??0)+'</td></tr>';}).join('')||'<tr><td colspan="4">此訂單沒有商品明細</td></tr>')+
+      '</tbody></table></div>'+
+      (d.original_message?'<details class="cat-link-original"><summary>查看原始 LINE 訂單文字</summary><pre>'+esc(d.original_message)+'</pre></details>':'');
+      $('catLinkOrderDetail').innerHTML=html;
+    }
+    host.querySelectorAll('[data-cat-pick-unlinked]').forEach(function(b){
+      b.onclick=async function(){
+        var id=b.dataset.catPickUnlinked,item=rows.find(function(x){return x.order_id===id;});
+        selectedOrderId=id;selectedCustomerId=null;detailReady=false;detailRequestId++;
+        var token=detailRequestId;
+        $('catLinkManual').classList.remove('hidden');
+        $('catLinkManualTitle').textContent=(item?.order_no||'ORD')+'｜'+(item?.buyer||'')+' → '+(item?.receiver||'');
+        $('catLinkOrderDetail').innerHTML='<div class="muted">正在載入完整訂單與商品明細…</div>';
+        $('catLinkCustomerQuery').value='';$('catLinkChosenCustomer').textContent='尚未選擇帳款主客戶';
+        $('catLinkAddressQuery').value='';renderAddressOptions();renderCustomerMatches();updateSaveButton();
+        $('catLinkManualMsg').textContent='';
+        $('catLinkManual').scrollIntoView({behavior:'smooth',block:'nearest'});
         try{
-          var result=await rpc('catalog_set_order_customer',{p_order_id:selected,p_customer_id:$('catLinkCustomerSelect').value,p_address_id:$('catLinkAddressSelect').value||null});
-          alert('已完成 '+result.order_no+' → '+result.customer_code+' 關聯。');await paintOrderLinkReview(search);
-        }catch(err){$('catLinkManualMsg').textContent='指定失敗：'+err.message;this.disabled=false;}
+          var detail=await rpc('catalog_customer_link_order_detail',{p_order_id:id});
+          if(selectedOrderId!==id||token!==detailRequestId)return;
+          renderOrderDetail(detail);detailReady=true;updateSaveButton();
+        }catch(err){
+          if(token!==detailRequestId)return;
+          $('catLinkOrderDetail').innerHTML='<div class="message error">訂單資訊讀取失敗：'+esc(err.message)+'</div>';
+          detailReady=false;updateSaveButton();
+        }
       };
-    }catch(e){host.innerHTML='<h3>LINE 訂單與客戶關聯</h3><div class="message error">讀取失敗：'+esc(e.message)+'</div>';}
+    });
+    $('catLinkManualCancel').onclick=function(){
+      detailRequestId++;selectedOrderId=null;selectedCustomerId=null;detailReady=false;
+      $('catLinkManual').classList.add('hidden');
+    };
+    $('catLinkManualSave').onclick=async function(){
+      if(!selectedOrderId||!selectedCustomerId||!detailReady){
+        $('catLinkManualMsg').textContent='請先查看訂單內容並搜尋選擇主客戶。';return;
+      }
+      var cid=selectedCustomerId,c=customers.find(function(x){return x.id===cid;});
+      var addressId=$('catLinkAddressSelect').value||null;
+      var chosenAddress=addresses.find(function(a){return a.id===addressId;});
+      var orderLabel=$('catLinkManualTitle').textContent;
+      var question='確定將 '+orderLabel+' 關聯至 '+c.customer_code+'｜'+c.name+
+        (chosenAddress?'，寄貨選項 '+(chosenAddress.import_ship_code||'')+'｜'+(chosenAddress.receiver_name||''):'（不指定寄貨選項）')+
+        '？\n僅修改關聯，不會變更原訂單內容。';
+      if(!confirm(question))return;
+      this.disabled=true;
+      try{
+        var out=await rpc('catalog_set_order_customer',{
+          p_order_id:selectedOrderId,p_customer_id:cid,p_address_id:addressId
+        });
+        alert('已完成 '+out.order_no+' → '+out.customer_code+' 關聯。');
+        await paintOrderLinkReview(search);
+      }catch(err){$('catLinkManualMsg').textContent='指定失敗：'+err.message;updateSaveButton();}
+    };
+  }catch(err){
+    host.innerHTML='<h3>LINE 訂單與客戶關聯</h3><div class="message error">讀取失敗：'+esc(err.message)+'</div>';
   }
-  paint();$('catCustomerSearch').oninput=paint;$('catCustomerLevelFilter').onchange=paint;$('catCustomerRefresh').onclick=renderCustomerAdmin;
+}
+    paint();$('catCustomerSearch').oninput=paint;$('catCustomerLevelFilter').onchange=paint;$('catCustomerRefresh').onclick=renderCustomerAdmin;
   paintOrderLinkReview('');
 }
 function openCustomerAddresses(customerId,addresses){
