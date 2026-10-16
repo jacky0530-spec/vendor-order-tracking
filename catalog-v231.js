@@ -242,12 +242,24 @@ async function renderCustomerAdmin(){
           parsed.push({account_code:vals[0],ship_code:vals[1],ship_name:vals[2],short_name:vals[3],category:vals[4],address:vals[5],phone:vals[6]});
         });
       });
+      // Excel 原始編號可能具有多層寄貨子代號（例：C209-03-01），不可只限制單層。
+      var validCustomerCode=/^C[0-9]+(?:-[0-9]+)*$/;
+      var badRow=parsed.findIndex(function(x){return !validCustomerCode.test(x.account_code)||!validCustomerCode.test(x.ship_code)||!x.ship_name;});
+      if(badRow>=0){
+        var bad=parsed[badRow];
+        throw new Error('Excel 第 '+(badRow+2)+' 筆資料錯誤：帳款歸屬 '+(bad.account_code||'(空白)')+'、客戶編號 '+(bad.ship_code||'(空白)')+'、收件人 '+(bad.ship_name||'(空白)')+'。編號應以 C 開頭、後接數字，可有多層 -數字 寄貨子代號。');
+      }
+      var duplicated=new Set(),repeated=parsed.find(function(x){if(duplicated.has(x.ship_code))return true;duplicated.add(x.ship_code);return false;});
+      if(repeated)throw new Error('Excel 寄貨編號重複：'+repeated.ship_code+'，請修正後再匯入。');
+      var mastersSet=new Set(parsed.filter(function(x){return x.ship_code===x.account_code;}).map(function(x){return x.account_code;}));
+      var orphan=parsed.find(function(x){return !mastersSet.has(x.account_code);});
+      if(orphan)throw new Error('寄貨編號 '+orphan.ship_code+' 找不到帳款歸屬主客戶 '+orphan.account_code+'，請檢查 Excel。');
       var masters=parsed.filter(function(x){return x.account_code===x.ship_code;}).length;
       if(parsed.length!==1428||masters!==259)throw new Error('Excel 應有259組主客戶、1428筆寄貨選項，目前解析到'+masters+'組、'+parsed.length+'筆；請使用匯入專用檔');
-      if(!confirm('確定匯入 259 組帳款主客戶與 1428 筆寄貨選項？其他舊客戶將封存，但保留 C0047 測試客戶與歷史訂單。此匯入只能執行一次。')){msg.textContent='已取消匯入';return;}
+      if(!confirm('確定匯入 259 組帳款主客戶與 1428 筆寄貨選項？目前商城僅保留 C0047 測試客戶；本次會新增259組主客戶與1428筆寄貨選項，不修改歷史訂單。此名單只能正式匯入一次。')){msg.textContent='已取消匯入';return;}
       msg.textContent='正在寫入 Supabase，請不要關閉頁面…';
       var outcome=await rpc('catalog_import_customer_excel',{p_rows:parsed});
-      msg.textContent='成功匯入 '+outcome.masters+' 組帳款主客戶、'+outcome.shipping_options+' 筆寄貨資料；封存舊客戶 '+outcome.old_archived+' 筆';
+      msg.textContent='成功匯入 '+outcome.masters+' 組帳款主客戶、'+outcome.shipping_options+' 筆寄貨資料。測試客戶保留，舊 ORD 紀錄不受影響。';
       msg.className='message success';
       await loadCommonAdmin();await renderCustomerAdmin();alert('客戶資料已成功匯入，請搜尋 C107 確認寄貨選項。');
     }catch(err){msg.textContent='匯入失敗：'+err.message;msg.className='message error';}
