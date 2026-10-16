@@ -219,7 +219,7 @@ async function renderCustomerAdmin(){
       return '<div class="catalog-myorder"><div class="catalog-head"><div><b>'+esc(c.customer_code)+' '+esc(c.name)+'</b><div class="muted">'+aa.length+' 組寄貨選項'+(c.active?'':'｜已封存')+(def?'｜預設：'+esc(def.receiver_name||'')+' '+esc(def.address||''):'')+'</div></div><div style="display:flex;gap:6px;flex-wrap:wrap"><select data-customer-level="'+c.id+'">'+state.levels.map(function(l){return '<option value="'+l.id+'" '+(mmap[c.id]===l.id?'selected':'')+'>'+esc(l.name)+'</option>';}).join('')+'</select><button class="btn ghost" data-customer-addresses="'+c.id+'">地址簿</button><button class="btn secondary" data-customer-account="'+c.id+'">'+(pr?'重設帳號':'建立帳號')+'</button></div></div></div>';
     }).join('')||'<div class="catalog-empty">沒有符合的客戶。</div>';
     $('catCustomerRows').querySelectorAll('[data-customer-level]').forEach(function(x){x.onchange=async function(){await rest('customer_level_members?on_conflict=customer_id',{method:'POST',headers:{Prefer:'resolution=merge-duplicates,return=minimal'},body:JSON.stringify({customer_id:x.dataset.customerLevel,level_id:x.value,updated_at:new Date().toISOString()})});mmap[x.dataset.customerLevel]=x.value;};});
-    $('catCustomerRows').querySelectorAll('[data-customer-addresses]').forEach(function(x){x.onclick=function(){openCustomerAddresses(x.dataset.customerAddresses,addresses);};});
+    $('catCustomerRows').querySelectorAll('[data-customer-addresses]').forEach(function(x){x.onclick=function(){openCustomerAddresses(x.dataset.customerAddresses,addresses,async function(){addresses=await restAll('customer_addresses?select=*&active=eq.true&order=is_default.desc,last_used_at.desc,id.asc');paint();return addresses;});};});
     $('catCustomerRows').querySelectorAll('[data-customer-account]').forEach(function(x){x.onclick=async function(){x.disabled=true;try{var d=await edge({action:'customer_account',customer_id:x.dataset.customerAccount});alert('客戶帳號：'+d.username+'\n初始/重設密碼：'+d.password+'\n首次登入後請修改密碼。');await renderCustomerAdmin();}catch(e){alert('帳號處理失敗：'+e.message);}finally{x.disabled=false;}};});
   }
     $('catCustomerShowArchived').onchange=paint;
@@ -478,10 +478,110 @@ async function renderCustomerAdmin(){
     paint();$('catCustomerSearch').oninput=paint;$('catCustomerLevelFilter').onchange=paint;$('catCustomerRefresh').onclick=renderCustomerAdmin;
   paintOrderLinkReview('');
 }
-function openCustomerAddresses(customerId,addresses){
-  var c=state.customers.find(function(x){return x.id===customerId;}),list=addresses.filter(function(a){return a.customer_id===customerId;});
+function openCustomerAddresses(customerId,addresses,onSaved){
+  var customer=state.customers.find(function(x){return x.id===customerId;});
+  if(!customer){alert('找不到客戶資料，請重新整理');return;}
   var old=$('catAddressAdminModal');if(old)old.remove();
-  var d=document.createElement('div');d.id='catAddressAdminModal';d.className='catalog-modal';d.innerHTML='<div class="catalog-modal-card"><div class="catalog-modal-head"><h2>'+esc(c?c.customer_code+' '+c.name:'客戶地址簿')+'</h2><button class="catalog-close" data-close>×</button></div><div>'+list.map(function(a){return '<div class="catalog-myorder"><b>'+(a.is_default?'★ ':'')+esc((a.import_ship_code?a.import_ship_code+'｜':'')+(a.receiver_name||'未填收貨人'))+'</b>'+(a.import_short_name?'<div class="muted">簡稱：'+esc(a.import_short_name)+'</div>':'')+(a.import_category?'<div class="muted">分類：'+esc(a.import_category)+'</div>':'')+'<div>電話：'+esc(a.phone||'未提供')+'</div><div>完整地址：'+esc(a.address||'未提供')+'</div><div class="muted">歷史訂單 '+esc(a.source_order_count||0)+' 筆</div></div>';}).join('')+'</div></div>';document.body.appendChild(d);d.querySelector('[data-close]').onclick=function(){d.remove();};
+  var modal=document.createElement('div');
+  modal.id='catAddressAdminModal';
+  modal.className='catalog-modal';
+  modal.innerHTML='<div class="catalog-modal-card cat-address-manager">'+
+    '<div class="catalog-modal-head"><h2>'+esc(customer.customer_code+'｜'+customer.name)+'｜收件資料</h2>'+
+    '<button type="button" class="catalog-close" data-close aria-label="關閉">×</button></div>'+
+    '<p class="muted">所有寄貨選項歸屬此帳款主客戶。新增收件人時自動分配寄貨編號；編輯既有資料時保留原編號，不修改歷史 ORD 收件快照。</p>'+
+    '<div class="cat-address-toolbar"><b id="catAddrCount"></b><button type="button" class="btn primary" id="catAddrAdd">＋新增收件資料</button></div>'+
+    '<div id="catAddrNotice" class="message" role="status"></div>'+
+    '<div id="catAddrEditor" class="cat-address-edit hidden">'+
+    '<h3 id="catAddrEditorTitle">新增收件資料</h3>'+
+    '<form id="catAddrForm" class="cat-address-form">'+
+    '<label>收件人姓名 <span class="cat-address-required">＊</span><input name="receiver_name" maxlength="150" required placeholder="姓名或收件單位"></label>'+
+    '<label>寄貨簡稱<input name="short_name" maxlength="150" placeholder="方便搜尋，可選填"></label>'+
+    '<label>收件電話 <span class="cat-address-required">＊</span><input name="phone" type="tel" maxlength="80" required placeholder="手機或市話，保留前面的 0"></label>'+
+    '<label>類別／分類<input name="category" maxlength="100" placeholder="可選填"></label>'+
+    '<label class="cat-address-wide">完整收件地址 <span class="cat-address-required">＊</span><textarea name="address" maxlength="1000" rows="3" required placeholder="縣市、鄉鎮區、街路門牌及收件時間備註"></textarea></label>'+
+    '<label class="cat-address-check"><input type="checkbox" name="is_default" value="1"> 設為此客戶的預設收件資料</label>'+
+    '<div class="cat-address-wide cat-address-actions"><button type="submit" class="btn primary" id="catAddrSave">儲存收件資料</button><button type="button" class="btn ghost" id="catAddrCancel">取消</button></div>'+
+    '</form></div>'+
+    '<div id="catAddrRows" class="cat-address-list"></div></div>';
+  document.body.appendChild(modal);
+  var editingId=null, saving=false;
+  function list(){
+    return addresses.filter(function(a){return a.customer_id===customerId&&a.active!==false;})
+      .sort(function(a,b){return Number(!!b.is_default)-Number(!!a.is_default)||
+        String(a.import_ship_code||'').localeCompare(String(b.import_ship_code||''),'zh-Hant',{numeric:true});});
+  }
+  function renderList(){
+    var rows=list();
+    modal.querySelector('#catAddrCount').textContent='目前 '+rows.length+' 組收件／寄貨選項';
+    modal.querySelector('#catAddrRows').innerHTML=rows.map(function(a){
+      return '<div class="catalog-myorder cat-address-entry">'+
+        '<div class="cat-address-entry-info"><b>'+ (a.is_default?'★ 預設｜':'')+
+        esc((a.import_ship_code||'自訂寄貨')+'｜'+(a.receiver_name||'未填收件人'))+'</b>'+
+        (a.import_short_name?'<div>簡稱：'+esc(a.import_short_name)+'</div>':'')+
+        (a.import_category?'<div>分類：'+esc(a.import_category)+'</div>':'')+
+        '<div>電話：'+esc(a.phone||'未提供')+'</div>'+
+        '<div>完整地址：'+esc(a.address||'未提供')+'</div>'+
+        '<div class="muted">歷史訂單 '+esc(a.source_order_count||0)+' 筆</div></div>'+
+        '<button type="button" class="btn ghost" data-edit-recipient="'+esc(a.id)+'">編輯資料</button></div>';
+    }).join('')||'<div class="catalog-empty">尚未建立收件資料，請按「新增收件資料」。</div>';
+    modal.querySelectorAll('[data-edit-recipient]').forEach(function(b){
+      b.onclick=function(){openEditor(b.dataset.editRecipient);};
+    });
+  }
+  function openEditor(addressId){
+    var existing=addressId?list().find(function(a){return a.id===addressId;}):null;
+    if(addressId&&!existing){alert('找不到指定收件資料，請重新整理');return;}
+    editingId=existing?existing.id:null;
+    var form=modal.querySelector('#catAddrForm');
+    form.reset();
+    form.elements.namedItem('receiver_name').value=existing?.receiver_name||'';
+    form.elements.namedItem('short_name').value=existing?.import_short_name||'';
+    form.elements.namedItem('phone').value=existing?.phone||'';
+    form.elements.namedItem('category').value=existing?.import_category||'';
+    form.elements.namedItem('address').value=existing?.address||'';
+    form.elements.namedItem('is_default').checked=existing?!!existing.is_default:!list().some(function(a){return a.is_default;});
+    modal.querySelector('#catAddrEditorTitle').textContent=existing?
+      '編輯｜'+(existing.import_ship_code||'收件資料')+'｜'+(existing.receiver_name||''):
+      '新增收件資料｜自動產生 '+customer.customer_code+' 子編號';
+    modal.querySelector('#catAddrEditor').classList.remove('hidden');
+    modal.querySelector('#catAddrNotice').textContent='';
+    modal.querySelector('#catAddrEditor').scrollIntoView({behavior:'smooth',block:'nearest'});
+    form.elements.namedItem('receiver_name').focus({preventScroll:true});
+  }
+  modal.querySelector('#catAddrAdd').onclick=function(){openEditor(null);};
+  modal.querySelector('#catAddrCancel').onclick=function(){modal.querySelector('#catAddrEditor').classList.add('hidden');editingId=null;};
+  modal.querySelector('[data-close]').onclick=function(){modal.remove();};
+  modal.querySelector('#catAddrForm').onsubmit=async function(e){
+    e.preventDefault();if(saving)return;
+    var form=this;
+    var name=String(form.elements.namedItem('receiver_name').value||'').trim();
+    var phone=String(form.elements.namedItem('phone').value||'').trim();
+    var address=String(form.elements.namedItem('address').value||'').trim();
+    if(!name||!phone||!address){modal.querySelector('#catAddrNotice').textContent='請填寫收件人、電話及完整地址。';return;}
+    var btn=modal.querySelector('#catAddrSave');
+    saving=true;btn.disabled=true;modal.querySelector('#catAddrNotice').textContent='正在儲存收件資料…';
+    try{
+      var out=await rpc('catalog_staff_save_customer_address',{
+        p_customer_id:customerId,p_address_id:editingId,
+        p_receiver_name:name,p_phone:phone,p_address:address,
+        p_short_name:String(form.elements.namedItem('short_name').value||'').trim(),
+        p_category:String(form.elements.namedItem('category').value||'').trim(),
+        p_is_default:form.elements.namedItem('is_default').checked
+      });
+      if(typeof onSaved==='function')addresses=await onSaved();
+      else addresses=await restAll('customer_addresses?select=*&active=eq.true&order=is_default.desc,last_used_at.desc,id.asc');
+      renderList();
+      editingId=null;
+      modal.querySelector('#catAddrEditor').classList.add('hidden');
+      modal.querySelector('#catAddrNotice').textContent=
+        '已儲存 '+(out.ship_code||'收件資料')+'（'+(out.action==='create'?'新增':'修改')+'）。';
+      modal.querySelector('#catAddrNotice').className='message success';
+    }catch(err){
+      modal.querySelector('#catAddrNotice').textContent='儲存失敗：'+err.message;
+      modal.querySelector('#catAddrNotice').className='message error';
+    }finally{saving=false;btn.disabled=false;}
+  };
+  renderList();
 }
 async function renderLevelAdmin(){
   var el=$('catAdminLevels'); if(!el)return;
