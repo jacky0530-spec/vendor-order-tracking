@@ -19,6 +19,15 @@ async function rest(path,opt){
   var txt=await res.text(); if(!res.ok){if(res.status===401||/JWT expired|invalid jwt|token.*expired/i.test(txt))throw new Error('登入已逾期，請重新登入後再操作。');var m=txt;try{var d=JSON.parse(txt);m=d.message||d.hint||d.details||txt;}catch(e){} throw new Error(m||('HTTP '+res.status));}
   return txt?JSON.parse(txt):null;
 }
+async function restAll(path){
+ var out=[],offset=0,chunk=800,rows;
+ do{
+  rows=await rest(path,{headers:{Range:offset+'-'+(offset+chunk-1)}});
+  if(!Array.isArray(rows))throw new Error('分頁讀取資料失敗');
+  out.push.apply(out,rows);offset+=rows.length;
+ }while(rows.length===chunk);
+ return out;
+}
 async function rpc(name,body){
   return rest('rpc/'+name,{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify(body||{})});
 }
@@ -62,7 +71,7 @@ async function loadCommonAdmin(){
   var rs=await Promise.all([
     rest('customer_levels?select=*&order=sort_order.asc'),
     rest('vendors?select=id,vendor_code,name,active&order=vendor_code.asc'),
-    rest('customers?select=id,customer_code,name,active&order=customer_code.asc'),
+    rest('customers?select=id,customer_code,name,active,import_account_code,import_short_name,import_category&order=customer_code.asc'),
     rest('catalog_products?select=*&order=created_at.desc'),
     rest('catalog_product_images?select=*&order=sort_order.asc,created_at.asc'),
     rest('catalog_variants?select=*&order=sort_order.asc')
@@ -193,26 +202,57 @@ async function renderCustomerAdmin(){
   var el=$('catAdminCustomers');if(!el)return;
   var rs=await Promise.all([
     rest('customer_level_members?select=*'),
-    rest('customer_addresses?select=*&active=eq.true&order=is_default.desc,last_used_at.desc'),
+    restAll('customer_addresses?select=*&active=eq.true&order=is_default.desc,last_used_at.desc,id.asc'),
     rest('user_profiles?select=user_id,customer_id,login_name,active,role&role=eq.customer')
   ]);
   var members=rs[0]||[],addresses=rs[1]||[],profiles=rs[2]||[],mmap={},pmap={};
   members.forEach(function(x){mmap[x.customer_id]=x.level_id;});profiles.forEach(function(x){pmap[x.customer_id]=x;});
-  el.innerHTML='<div class="card inner-card" style="margin-bottom:14px"><h3>＋手動新增客戶</h3><p class="muted">管理員與小幫手可新增，客戶編號 Cxxxx 自動產生；新增後可直接建立登入帳號。</p><div class="catalog-form-grid"><label>客戶名稱（必填）<input id="catNewCustomerName" maxlength="100" placeholder="公司、商店或客戶名稱"></label><label>聯絡人<input id="catNewCustomerContact" placeholder="聯絡人姓名"></label><label>聯絡電話<input id="catNewCustomerPhone" placeholder="電話"></label><label>電子郵件<input id="catNewCustomerEmail" type="email" placeholder="選填"></label><label>收貨人<input id="catNewCustomerReceiver" placeholder="選填"></label><label class="span2">預設收貨地址<input id="catNewCustomerAddress" placeholder="選填；可日後從地址簿新增"></label><label class="span2">備註<input id="catNewCustomerNotes" placeholder="選填"></label></div><button id="catCreateCustomer" type="button" class="btn primary">新增客戶</button><div id="catCreateCustomerMsg" class="message" role="status"></div></div><div class="catalog-toolbar"><input id="catCustomerSearch" placeholder="搜尋客戶編號、名稱、收貨人、地址"><select id="catCustomerLevelFilter"><option value="">全部等級</option>'+state.levels.map(function(l){return '<option value="'+l.id+'">'+esc(l.name)+'</option>';}).join('')+'</select><button id="catCustomerRefresh" class="btn ghost">重新整理</button></div><div id="catCustomerRows"></div>';
+  el.innerHTML='<div class="card inner-card" style="margin-bottom:14px"><h3>Excel 客戶名單匯入</h3><p class="muted">僅匯入「廠商訂單追蹤／B2B 商城」Supabase；259 組帳款客戶與 1428 筆寄貨選項將以單次交易建立。舊客戶封存，保留 C0047 測試客戶。</p><input type="file" accept=".xlsx,.xls" id="catImportCustomerExcel"><button id="catImportCustomerBtn" class="btn primary" type="button" style="margin-left:8px">核對並正式匯入</button><div id="catImportCustomerMsg" class="message" role="status"></div></div><div class="card inner-card" style="margin-bottom:14px"><h3>＋手動新增客戶</h3><p class="muted">管理員與小幫手可新增，客戶編號 Cxxxx 自動產生；新增後可直接建立登入帳號。</p><div class="catalog-form-grid"><label>客戶名稱（必填）<input id="catNewCustomerName" maxlength="100" placeholder="公司、商店或客戶名稱"></label><label>聯絡人<input id="catNewCustomerContact" placeholder="聯絡人姓名"></label><label>聯絡電話<input id="catNewCustomerPhone" placeholder="電話"></label><label>電子郵件<input id="catNewCustomerEmail" type="email" placeholder="選填"></label><label>收貨人<input id="catNewCustomerReceiver" placeholder="選填"></label><label class="span2">預設收貨地址<input id="catNewCustomerAddress" placeholder="選填；可日後從地址簿新增"></label><label class="span2">備註<input id="catNewCustomerNotes" placeholder="選填"></label></div><button id="catCreateCustomer" type="button" class="btn primary">新增客戶</button><div id="catCreateCustomerMsg" class="message" role="status"></div></div><div class="catalog-toolbar"><input id="catCustomerSearch" placeholder="搜尋客戶編號、名稱、收貨人、地址"><select id="catCustomerLevelFilter"><option value="">全部等級</option>'+state.levels.map(function(l){return '<option value="'+l.id+'">'+esc(l.name)+'</option>';}).join('')+'</select><label style="display:flex;align-items:center;gap:7px;white-space:nowrap"><input type="checkbox" id="catCustomerShowArchived" style="width:auto;min-height:0">顯示封存客戶</label><button id="catCustomerRefresh" class="btn ghost">重新整理</button></div><div id="catCustomerRows"></div>';
   function paint(){
-    var q=($('catCustomerSearch').value||'').toLowerCase(),lf=$('catCustomerLevelFilter').value;
+    var q=($('catCustomerSearch').value||'').toLowerCase(),lf=$('catCustomerLevelFilter').value,showArchived=$('catCustomerShowArchived').checked;
     var list=state.customers.filter(function(c){
-      var aa=addresses.filter(function(a){return a.customer_id===c.id;}),hay=(c.customer_code+' '+c.name+' '+aa.map(function(a){return (a.receiver_name||'')+' '+(a.phone||'')+' '+(a.address||'');}).join(' ')).toLowerCase();
-      return (!q||hay.indexOf(q)>=0)&&(!lf||mmap[c.id]===lf);
+      var aa=addresses.filter(function(a){return a.customer_id===c.id;}),hay=(c.customer_code+' '+c.name+' '+(c.import_short_name||'')+' '+aa.map(function(a){return (a.import_ship_code||'')+' '+(a.import_short_name||'')+' '+(a.receiver_name||'')+' '+(a.phone||'')+' '+(a.address||'');}).join(' ')).toLowerCase();
+      return (c.active||showArchived)&&(!q||hay.indexOf(q)>=0)&&(!lf||mmap[c.id]===lf);
     });
     $('catCustomerRows').innerHTML=list.map(function(c){
       var aa=addresses.filter(function(a){return a.customer_id===c.id;}),def=aa.find(function(a){return a.is_default;})||aa[0],pr=pmap[c.id];
-      return '<div class="catalog-myorder"><div class="catalog-head"><div><b>'+esc(c.customer_code)+' '+esc(c.name)+'</b><div class="muted">'+aa.length+' 組收貨資料'+(def?'｜預設：'+esc(def.receiver_name||'')+' '+esc(def.address||''):'')+'</div></div><div style="display:flex;gap:6px;flex-wrap:wrap"><select data-customer-level="'+c.id+'">'+state.levels.map(function(l){return '<option value="'+l.id+'" '+(mmap[c.id]===l.id?'selected':'')+'>'+esc(l.name)+'</option>';}).join('')+'</select><button class="btn ghost" data-customer-addresses="'+c.id+'">地址簿</button><button class="btn secondary" data-customer-account="'+c.id+'">'+(pr?'重設帳號':'建立帳號')+'</button></div></div></div>';
+      return '<div class="catalog-myorder"><div class="catalog-head"><div><b>'+esc(c.customer_code)+' '+esc(c.name)+'</b><div class="muted">'+aa.length+' 組寄貨選項'+(c.active?'':'｜已封存')+(def?'｜預設：'+esc(def.receiver_name||'')+' '+esc(def.address||''):'')+'</div></div><div style="display:flex;gap:6px;flex-wrap:wrap"><select data-customer-level="'+c.id+'">'+state.levels.map(function(l){return '<option value="'+l.id+'" '+(mmap[c.id]===l.id?'selected':'')+'>'+esc(l.name)+'</option>';}).join('')+'</select><button class="btn ghost" data-customer-addresses="'+c.id+'">地址簿</button><button class="btn secondary" data-customer-account="'+c.id+'">'+(pr?'重設帳號':'建立帳號')+'</button></div></div></div>';
     }).join('')||'<div class="catalog-empty">沒有符合的客戶。</div>';
     $('catCustomerRows').querySelectorAll('[data-customer-level]').forEach(function(x){x.onchange=async function(){await rest('customer_level_members?on_conflict=customer_id',{method:'POST',headers:{Prefer:'resolution=merge-duplicates,return=minimal'},body:JSON.stringify({customer_id:x.dataset.customerLevel,level_id:x.value,updated_at:new Date().toISOString()})});mmap[x.dataset.customerLevel]=x.value;};});
     $('catCustomerRows').querySelectorAll('[data-customer-addresses]').forEach(function(x){x.onclick=function(){openCustomerAddresses(x.dataset.customerAddresses,addresses);};});
     $('catCustomerRows').querySelectorAll('[data-customer-account]').forEach(function(x){x.onclick=async function(){x.disabled=true;try{var d=await edge({action:'customer_account',customer_id:x.dataset.customerAccount});alert('客戶帳號：'+d.username+'\n初始/重設密碼：'+d.password+'\n首次登入後請修改密碼。');await renderCustomerAdmin();}catch(e){alert('帳號處理失敗：'+e.message);}finally{x.disabled=false;}};});
   }
+    $('catCustomerShowArchived').onchange=paint;
+  $('catImportCustomerBtn').onclick=async function(){
+    var btn=this,msg=$('catImportCustomerMsg'),file=$('catImportCustomerExcel').files[0];
+    if(!file){msg.textContent='請先選擇本次匯入的 Excel 檔案';return;}
+    if(typeof XLSX==='undefined'){msg.textContent='Excel 元件尚未載入，請重新整理後操作';return;}
+    try{
+      btn.disabled=true;msg.textContent='正在驗證 Excel …';
+      var wb=XLSX.read(await file.arrayBuffer(),{type:'array'}),parsed=[],required=['帳款歸屬','客戶編號','客戶全稱','客戶簡稱','類別名稱','送貨地址','聯絡電話一'];
+      wb.SheetNames.forEach(function(n){
+        var lines=XLSX.utils.sheet_to_json(wb.Sheets[n],{header:1,raw:false,defval:''});
+        if(!lines.length)return;
+        var headers=lines[0].map(function(v){return String(v||'').trim();});
+        var indexes=required.map(function(k){return headers.indexOf(k);});
+        if(indexes.some(function(i){return i<0;}))return;
+        lines.slice(1).forEach(function(row){
+          if(row.every(function(c){return !String(c||'').trim();}))return;
+          var vals=indexes.map(function(i){return String(row[i]??'').trim();});
+          parsed.push({account_code:vals[0],ship_code:vals[1],ship_name:vals[2],short_name:vals[3],category:vals[4],address:vals[5],phone:vals[6]});
+        });
+      });
+      var masters=parsed.filter(function(x){return x.account_code===x.ship_code;}).length;
+      if(parsed.length!==1428||masters!==259)throw new Error('Excel 應有259組主客戶、1428筆寄貨選項，目前解析到'+masters+'組、'+parsed.length+'筆；請使用匯入專用檔');
+      if(!confirm('確定匯入 259 組帳款主客戶與 1428 筆寄貨選項？其他舊客戶將封存，但保留 C0047 測試客戶與歷史訂單。此匯入只能執行一次。')){msg.textContent='已取消匯入';return;}
+      msg.textContent='正在寫入 Supabase，請不要關閉頁面…';
+      var outcome=await rpc('catalog_import_customer_excel',{p_rows:parsed});
+      msg.textContent='成功匯入 '+outcome.masters+' 組帳款主客戶、'+outcome.shipping_options+' 筆寄貨資料；封存舊客戶 '+outcome.old_archived+' 筆';
+      msg.className='message success';
+      await loadCommonAdmin();await renderCustomerAdmin();alert('客戶資料已成功匯入，請搜尋 C107 確認寄貨選項。');
+    }catch(err){msg.textContent='匯入失敗：'+err.message;msg.className='message error';}
+    finally{btn.disabled=false;}
+  };
   $('catCreateCustomer').onclick=async function(){
     var b=this,m=$('catCreateCustomerMsg'),name=$('catNewCustomerName').value.trim();
     if(!name){m.textContent='請先填寫客戶名稱';return;}
@@ -230,7 +270,7 @@ async function renderCustomerAdmin(){
 function openCustomerAddresses(customerId,addresses){
   var c=state.customers.find(function(x){return x.id===customerId;}),list=addresses.filter(function(a){return a.customer_id===customerId;});
   var old=$('catAddressAdminModal');if(old)old.remove();
-  var d=document.createElement('div');d.id='catAddressAdminModal';d.className='catalog-modal';d.innerHTML='<div class="catalog-modal-card"><div class="catalog-modal-head"><h2>'+esc(c?c.customer_code+' '+c.name:'客戶地址簿')+'</h2><button class="catalog-close" data-close>×</button></div><div>'+list.map(function(a){return '<div class="catalog-myorder"><b>'+(a.is_default?'★ ':'')+esc(a.receiver_name||'未填收貨人')+'</b><div>'+esc(a.phone||'')+'</div><div>'+esc(a.address||'')+'</div><div class="muted">歷史訂單 '+esc(a.source_order_count||0)+' 筆</div></div>';}).join('')+'</div></div>';document.body.appendChild(d);d.querySelector('[data-close]').onclick=function(){d.remove();};
+  var d=document.createElement('div');d.id='catAddressAdminModal';d.className='catalog-modal';d.innerHTML='<div class="catalog-modal-card"><div class="catalog-modal-head"><h2>'+esc(c?c.customer_code+' '+c.name:'客戶地址簿')+'</h2><button class="catalog-close" data-close>×</button></div><div>'+list.map(function(a){return '<div class="catalog-myorder"><b>'+(a.is_default?'★ ':'')+esc((a.import_ship_code?a.import_ship_code+'｜':'')+(a.receiver_name||'未填收貨人'))+'</b>'+(a.import_short_name?'<div class="muted">簡稱：'+esc(a.import_short_name)+'</div>':'')+(a.import_category?'<div class="muted">分類：'+esc(a.import_category)+'</div>':'')+'<div>電話：'+esc(a.phone||'未提供')+'</div><div>完整地址：'+esc(a.address||'未提供')+'</div><div class="muted">歷史訂單 '+esc(a.source_order_count||0)+' 筆</div></div>';}).join('')+'</div></div>';document.body.appendChild(d);d.querySelector('[data-close]').onclick=function(){d.remove();};
 }
 async function renderLevelAdmin(){
   var el=$('catAdminLevels'); if(!el)return;
