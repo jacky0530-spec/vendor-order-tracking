@@ -207,7 +207,7 @@ async function renderCustomerAdmin(){
   ]);
   var members=rs[0]||[],addresses=rs[1]||[],profiles=rs[2]||[],mmap={},pmap={};
   members.forEach(function(x){mmap[x.customer_id]=x.level_id;});profiles.forEach(function(x){pmap[x.customer_id]=x;});
-  el.innerHTML='<div class="card inner-card" style="margin-bottom:14px"><h3>Excel 客戶名單匯入</h3><p class="muted">僅匯入「廠商訂單追蹤／B2B 商城」Supabase；259 組帳款客戶與 1428 筆寄貨選項將以單次交易建立。舊客戶封存，保留 C0047 測試客戶。</p><input type="file" accept=".xlsx,.xls" id="catImportCustomerExcel"><button id="catImportCustomerBtn" class="btn primary" type="button" style="margin-left:8px">核對並正式匯入</button><div id="catImportCustomerMsg" class="message" role="status"></div></div><div class="card inner-card" style="margin-bottom:14px"><h3>＋手動新增客戶</h3><p class="muted">管理員與小幫手可新增，客戶編號 Cxxxx 自動產生；新增後可直接建立登入帳號。</p><div class="catalog-form-grid"><label>客戶名稱（必填）<input id="catNewCustomerName" maxlength="100" placeholder="公司、商店或客戶名稱"></label><label>聯絡人<input id="catNewCustomerContact" placeholder="聯絡人姓名"></label><label>聯絡電話<input id="catNewCustomerPhone" placeholder="電話"></label><label>電子郵件<input id="catNewCustomerEmail" type="email" placeholder="選填"></label><label>收貨人<input id="catNewCustomerReceiver" placeholder="選填"></label><label class="span2">預設收貨地址<input id="catNewCustomerAddress" placeholder="選填；可日後從地址簿新增"></label><label class="span2">備註<input id="catNewCustomerNotes" placeholder="選填"></label></div><button id="catCreateCustomer" type="button" class="btn primary">新增客戶</button><div id="catCreateCustomerMsg" class="message" role="status"></div></div><div class="catalog-toolbar"><input id="catCustomerSearch" placeholder="搜尋客戶編號、名稱、收貨人、地址"><select id="catCustomerLevelFilter"><option value="">全部等級</option>'+state.levels.map(function(l){return '<option value="'+l.id+'">'+esc(l.name)+'</option>';}).join('')+'</select><label style="display:flex;align-items:center;gap:7px;white-space:nowrap"><input type="checkbox" id="catCustomerShowArchived" style="width:auto;min-height:0">顯示封存客戶</label><button id="catCustomerRefresh" class="btn ghost">重新整理</button></div><div id="catCustomerRows"></div>';
+  el.innerHTML='<div class="card inner-card" style="margin-bottom:14px"><h3>Excel 客戶名單匯入</h3><p class="muted">僅匯入「廠商訂單追蹤／B2B 商城」Supabase；依 Excel 的帳款歸屬建立／更新主客戶與寄貨選項；匯入後會自動重新比對尚未關聯的 LINE ORD。已存在的客戶編號會更新，不重複建立；C0047 測試客戶保留。</p><input type="file" accept=".xlsx,.xls" id="catImportCustomerExcel"><button id="catImportCustomerBtn" class="btn primary" type="button" style="margin-left:8px">核對並正式匯入</button><div id="catImportCustomerMsg" class="message" role="status"></div></div><div class="card inner-card" style="margin-bottom:14px" id="catCustomerLinkReview"><h3>LINE 訂單與客戶關聯</h3><div class="muted">正在取得關聯統計…</div></div><div class="card inner-card" style="margin-bottom:14px"><h3>＋手動新增客戶</h3><p class="muted">管理員與小幫手可新增，客戶編號 Cxxxx 自動產生；新增後可直接建立登入帳號。</p><div class="catalog-form-grid"><label>客戶名稱（必填）<input id="catNewCustomerName" maxlength="100" placeholder="公司、商店或客戶名稱"></label><label>聯絡人<input id="catNewCustomerContact" placeholder="聯絡人姓名"></label><label>聯絡電話<input id="catNewCustomerPhone" placeholder="電話"></label><label>電子郵件<input id="catNewCustomerEmail" type="email" placeholder="選填"></label><label>收貨人<input id="catNewCustomerReceiver" placeholder="選填"></label><label class="span2">預設收貨地址<input id="catNewCustomerAddress" placeholder="選填；可日後從地址簿新增"></label><label class="span2">備註<input id="catNewCustomerNotes" placeholder="選填"></label></div><button id="catCreateCustomer" type="button" class="btn primary">新增客戶</button><div id="catCreateCustomerMsg" class="message" role="status"></div></div><div class="catalog-toolbar"><input id="catCustomerSearch" placeholder="搜尋客戶編號、名稱、收貨人、地址"><select id="catCustomerLevelFilter"><option value="">全部等級</option>'+state.levels.map(function(l){return '<option value="'+l.id+'">'+esc(l.name)+'</option>';}).join('')+'</select><label style="display:flex;align-items:center;gap:7px;white-space:nowrap"><input type="checkbox" id="catCustomerShowArchived" style="width:auto;min-height:0">顯示封存客戶</label><button id="catCustomerRefresh" class="btn ghost">重新整理</button></div><div id="catCustomerRows"></div>';
   function paint(){
     var q=($('catCustomerSearch').value||'').toLowerCase(),lf=$('catCustomerLevelFilter').value,showArchived=$('catCustomerShowArchived').checked;
     var list=state.customers.filter(function(c){
@@ -255,13 +255,13 @@ async function renderCustomerAdmin(){
       var orphan=parsed.find(function(x){return !mastersSet.has(x.account_code);});
       if(orphan)throw new Error('寄貨編號 '+orphan.ship_code+' 找不到帳款歸屬主客戶 '+orphan.account_code+'，請檢查 Excel。');
       var masters=parsed.filter(function(x){return x.account_code===x.ship_code;}).length;
-      if(parsed.length!==1428||masters!==259)throw new Error('Excel 應有259組主客戶、1428筆寄貨選項，目前解析到'+masters+'組、'+parsed.length+'筆；請使用匯入專用檔');
-      if(!confirm('確定匯入 259 組帳款主客戶與 1428 筆寄貨選項？目前商城僅保留 C0047 測試客戶；本次會新增259組主客戶與1428筆寄貨選項，不修改歷史訂單。此名單只能正式匯入一次。')){msg.textContent='已取消匯入';return;}
+      if(parsed.length===0||masters===0)throw new Error('沒有找到可匯入的主客戶與寄貨資料，請確認 Excel 欄位標題與內容');
+      if(!confirm('確認建立／更新 '+masters+' 組主客戶與 '+parsed.length+' 筆寄貨選項？同編號資料將依 Excel 更新；不刪除其他客戶或歷史訂單，完成後將自動重新比對尚未關聯的 LINE ORD。')){msg.textContent='已取消匯入';return;}
       msg.textContent='正在寫入 Supabase，請不要關閉頁面…';
       var outcome=await rpc('catalog_import_customer_excel',{p_rows:parsed});
-      msg.textContent='成功匯入 '+outcome.masters+' 組帳款主客戶、'+outcome.shipping_options+' 筆寄貨資料。測試客戶保留，舊 ORD 紀錄不受影響。';
+      msg.textContent='已處理主客戶 '+outcome.masters+' 組（新增 '+outcome.new_masters+'）、寄貨選項 '+outcome.shipping_options+' 筆（新增 '+outcome.new_shipping_options+'）；LINE 訂單新增關聯 '+(outcome.relink?.linked||0)+' 張，仍待確認 '+(outcome.relink?.pending_review||0)+' 張。';
       msg.className='message success';
-      await loadCommonAdmin();await renderCustomerAdmin();alert('客戶資料已成功匯入，請搜尋 C107 確認寄貨選項。');
+      await loadCommonAdmin();await renderCustomerAdmin();alert('Excel 已匯入並重新比對 LINE ORD，請查看「LINE 訂單與客戶關聯」統計。');
     }catch(err){msg.textContent='匯入失敗：'+err.message;msg.className='message error';}
     finally{btn.disabled=false;}
   };
@@ -277,7 +277,60 @@ async function renderCustomerAdmin(){
     }catch(e){m.textContent='新增失敗：'+e.message;}
     finally{b.disabled=false;}
   };
+
+  async function paintOrderLinkReview(search){
+    var host=$('catCustomerLinkReview');if(!host)return;
+    host.innerHTML='<h3>LINE 訂單與客戶關聯</h3><div class="muted">正在整理關聯資料…</div>';
+    try{
+      var data=await rpc('catalog_customer_link_review',{p_limit:35,p_search:search||null});
+      if(!host.isConnected)return;
+      var titles={no_verified_match:'尚未找到可核實的客戶',shipping_ambiguous:'收件資料符合多位客戶',buyer_receiver_conflict:'訂購人與寄貨對象歸屬衝突',buyer_ambiguous:'訂購人名稱有重複',未檢查:'尚未檢查'};
+      var rows=data.results||[];
+      host.innerHTML='<div class="catalog-head"><h3>LINE 訂單與客戶關聯</h3><button type="button" id="catLinkRefresh" class="btn ghost">重新比對未關聯 ORD</button></div>'+
+        '<p class="muted">已關聯 <b>'+Number(data.linked||0)+'</b>／'+Number(data.line_orders||0)+' 張有效 LINE 訂單，還有 <b style="color:#b42318">'+Number(data.unlinked||0)+'</b> 張待確認。只會自動關聯唯一且可靠的比對結果，不改動訂單內容或出貨歷程。</p>'+
+        '<div class="catalog-toolbar"><input id="catLinkSearch" placeholder="搜尋 ORD 編號、訂購人或收件人" value="'+esc(search||'')+'"><button id="catLinkSearchBtn" class="btn ghost" type="button">搜尋待確認訂單</button></div>'+
+        '<div style="max-height:280px;overflow:auto;border:1px solid #e1e6ed;border-radius:12px">'+
+          (rows.map(function(o){return '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 12px;border-bottom:1px solid #edf0f4">'+
+            '<div><b>'+esc(o.order_no)+'</b>｜'+esc(o.buyer||'（未填訂購人）')+' → '+esc(o.receiver||'（未填收件人）')+
+            '<div class="muted" style="font-size:12px">'+esc(titles[o.reason]||o.reason||'待確認')+'</div></div>'+
+            '<button type="button" class="btn small ghost" data-cat-pick-unlinked="'+esc(o.order_id)+'">指定客戶</button></div>';}).join('')||
+          '<div style="padding:16px" class="muted">沒有符合的待確認訂單。</div>')+'</div>'+
+        '<div id="catLinkManual" class="catalog-block hidden" style="margin-top:12px">'+
+          '<b id="catLinkManualTitle"></b><div class="catalog-form-grid" style="margin-top:8px">'+
+          '<label>帳款主客戶<select id="catLinkCustomerSelect"><option value="">請選擇主客戶</option>'+
+            state.customers.filter(function(c){return c.active;}).map(function(c){return '<option value="'+esc(c.id)+'">'+esc(c.customer_code+'｜'+c.name)+'</option>';}).join('')+'</select></label>'+
+          '<label>寄貨選項（非必要）<select id="catLinkAddressSelect"><option value="">不指定寄貨選項</option></select></label></div>'+
+          '<button type="button" id="catLinkManualSave" class="btn primary">確認建立此 ORD 客戶關聯</button>'+
+          '<button type="button" id="catLinkManualCancel" class="btn ghost">取消</button>'+
+          '<div id="catLinkManualMsg" class="message"></div></div>';
+      $('catLinkSearchBtn').onclick=function(){paintOrderLinkReview($('catLinkSearch').value.trim());};
+      $('catLinkSearch').onkeydown=function(e){if(e.key==='Enter')paintOrderLinkReview(this.value.trim());};
+      $('catLinkRefresh').onclick=async function(){this.disabled=true;try{var out=await rpc('catalog_relink_order_customers',{});alert('重新比對完成：新增關聯 '+out.linked+' 張、待確認 '+out.pending_review+' 張。');await paintOrderLinkReview(search);}catch(e){alert('重新比對失敗：'+e.message);this.disabled=false;}};
+      var selected=null;
+      host.querySelectorAll('[data-cat-pick-unlinked]').forEach(function(b){b.onclick=function(){
+        selected=b.dataset.catPickUnlinked;var item=rows.find(function(x){return x.order_id===selected;});
+        $('catLinkManual').classList.remove('hidden');$('catLinkManualTitle').textContent=(item?.order_no||'ORD')+'｜'+(item?.buyer||'')+' → '+(item?.receiver||'');
+        $('catLinkCustomerSelect').value='';$('catLinkAddressSelect').innerHTML='<option value="">不指定寄貨選項</option>';
+        $('catLinkManualMsg').textContent='';$('catLinkManual').scrollIntoView({behavior:'smooth',block:'nearest'});
+      };});
+      $('catLinkCustomerSelect').onchange=function(){
+        var cid=this.value;var opts=addresses.filter(function(a){return a.active&&a.customer_id===cid;});
+        $('catLinkAddressSelect').innerHTML='<option value="">不指定寄貨選項</option>'+opts.map(function(a){return '<option value="'+esc(a.id)+'">'+esc((a.import_ship_code||'')+'｜'+(a.receiver_name||'')+'｜'+(a.address||'（無地址）'))+'</option>';}).join('');
+      };
+      $('catLinkManualCancel').onclick=function(){$('catLinkManual').classList.add('hidden');};
+      $('catLinkManualSave').onclick=async function(){
+        if(!selected||!$('catLinkCustomerSelect').value){$('catLinkManualMsg').textContent='請先選擇帳款主客戶';return;}
+        if(!confirm('確定為 '+$('catLinkManualTitle').textContent+' 指定客戶？此操作會記錄操作人員。'))return;
+        this.disabled=true;
+        try{
+          var result=await rpc('catalog_set_order_customer',{p_order_id:selected,p_customer_id:$('catLinkCustomerSelect').value,p_address_id:$('catLinkAddressSelect').value||null});
+          alert('已完成 '+result.order_no+' → '+result.customer_code+' 關聯。');await paintOrderLinkReview(search);
+        }catch(err){$('catLinkManualMsg').textContent='指定失敗：'+err.message;this.disabled=false;}
+      };
+    }catch(e){host.innerHTML='<h3>LINE 訂單與客戶關聯</h3><div class="message error">讀取失敗：'+esc(e.message)+'</div>';}
+  }
   paint();$('catCustomerSearch').oninput=paint;$('catCustomerLevelFilter').onchange=paint;$('catCustomerRefresh').onclick=renderCustomerAdmin;
+  paintOrderLinkReview('');
 }
 function openCustomerAddresses(customerId,addresses){
   var c=state.customers.find(function(x){return x.id===customerId;}),list=addresses.filter(function(a){return a.customer_id===customerId;});
