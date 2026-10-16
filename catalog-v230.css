@@ -150,3 +150,47 @@ header.topbar #catalogCustomerNav button.active{background:#0f766e;border-color:
  body:has(#customerView:not(.hidden)) header.topbar #catalogCustomerNav{gap:6px}
  header.topbar #catalogCustomerNav button{min-height:44px;padding:9px 14px}
 }
+
+/* V2.74 LINE 訂單／帳款主客戶關聯：可搜尋客戶與訂單資訊卡 */
+#catCustomerLinkReview .cat-link-order-list{max-height:300px;overflow:auto;border:1px solid #e1e6ed;border-radius:12px;background:#fff}
+#catCustomerLinkReview .cat-link-order-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border-bottom:1px solid #edf0f4}
+#catCustomerLinkReview .cat-link-order-row:last-child{border-bottom:0}
+#catCustomerLinkReview .cat-link-order-row>div{min-width:0;overflow-wrap:anywhere}
+#catCustomerLinkReview .cat-link-order-row button{flex-shrink:0}
+#catCustomerLinkReview .cat-link-manual{margin-top:14px;padding:14px 16px;background:#fbfcfe;border:1px solid #dae1e8;border-radius:12px}
+#catCustomerLinkReview .cat-link-manual h4{margin:0 0 10px;font-size:16px}
+#catCustomerLinkReview .cat-link-order-detail{margin:0 0 14px}
+#catCustomerLinkReview .cat-link-order-facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+#catCustomerLinkReview .cat-link-order-facts>div{border:1px solid #e7ebf1;border-radius:9px;padding:8px 10px;background:#fff;min-width:0}
+#catCustomerLinkReview .cat-link-order-facts b{display:block;color:#667085;font-size:11px;margin-bottom:4px}
+#catCustomerLinkReview .cat-link-order-facts span{font-size:13px;color:#101828;overflow-wrap:anywhere;white-space:pre-wrap}
+#catCustomerLinkReview .cat-link-order-facts .cat-link-full{grid-column:1/-1}
+#catCustomerLinkReview .cat-link-items-wrap{overflow-x:auto;margin:10px 0;border:1px solid #e7ebf1;border-radius:9px;background:#fff}
+#catCustomerLinkReview .cat-link-items-wrap table{width:100%;min-width:580px;border-collapse:collapse;font-size:13px}
+#catCustomerLinkReview .cat-link-items-wrap th,#catCustomerLinkReview .cat-link-items-wrap td{padding:9px 10px;text-align:left;border-bottom:1px solid #eef1f5}
+#catCustomerLinkReview .cat-link-items-wrap th{background:#f5f7fa;font-size:12px}
+#catCustomerLinkReview .cat-link-original{background:#fff;border:1px solid #e7ebf1;border-radius:9px;padding:10px 12px;margin-bottom:12px}
+#catCustomerLinkReview .cat-link-original summary{cursor:pointer;font-weight:600}
+#catCustomerLinkReview .cat-link-original pre{white-space:pre-wrap;word-break:break-word;font-family:inherit;font-size:13px;max-height:240px;overflow:auto}
+#catCustomerLinkReview .cat-link-select-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:12px 0}
+#catCustomerLinkReview .cat-link-select-grid label{display:block;font-size:13px;font-weight:600;margin:0 0 6px}
+#catCustomerLinkReview .cat-link-select-grid input,#catCustomerLinkReview .cat-link-select-grid select{width:100%;min-height:42px;margin:0 0 7px;box-sizing:border-box}
+#catCustomerLinkReview .cat-link-customer-results{max-height:210px;overflow-y:auto;background:#fff;border:1px solid #d8e0e8;border-radius:9px}
+#catCustomerLinkReview .cat-link-customer-results>.muted{padding:12px}
+#catCustomerLinkReview .cat-link-customer-result{display:flex;flex-direction:column;gap:3px;text-align:left;width:100%;min-height:44px;cursor:pointer;background:#fff;border:0;border-bottom:1px solid #eff2f5;padding:9px 11px;color:#102033}
+#catCustomerLinkReview .cat-link-customer-result:hover,#catCustomerLinkReview .cat-link-customer-result:focus-visible{background:#eaf5f1;outline:2px solid #0f766e;outline-offset:-2px}
+#catCustomerLinkReview .cat-link-customer-result b{font-size:13px}
+#catCustomerLinkReview .cat-link-customer-result span{color:#667085;font-size:11px}
+#catCustomerLinkReview .cat-link-chosen{padding:9px 10px;background:#edf8f4;border:1px solid #b6e5d3;border-radius:9px;min-height:24px;font-size:13px;display:flex;align-items:center;justify-content:space-between;gap:8px}
+#catCustomerLinkReview .cat-link-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px}
+@media(max-width:800px){
+ #catCustomerLinkReview .cat-link-select-grid{grid-template-columns:minmax(0,1fr)}
+ #catCustomerLinkReview .cat-link-order-facts{grid-template-columns:repeat(2,minmax(0,1fr))}
+ #catCustomerLinkReview .cat-link-order-row{align-items:flex-start}
+ #catCustomerLinkReview .cat-link-order-row button{min-height:42px}
+}
+@media(max-width:520px){
+ #catCustomerLinkReview .cat-link-order-facts{grid-template-columns:minmax(0,1fr)}
+ #catCustomerLinkReview .cat-link-manual{padding:10px}
+ #catCustomerLinkReview .cat-link-order-row{flex-direction:column;align-items:stretch}
+}
