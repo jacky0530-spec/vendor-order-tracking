@@ -301,7 +301,7 @@ async function renderCustomerAdmin(){
     };
     var rows=data.results||[];
     host.innerHTML=
-      '<div class="catalog-head"><h3>LINE 訂單與客戶關聯</h3><button type="button" id="catLinkRefresh" class="btn ghost">重新比對未關聯 ORD</button></div>'+
+      '<div class="catalog-head"><h3>LINE 訂單與客戶關聯</h3><div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" id="catLinkExport" class="btn ghost">匯出未關聯客戶 Excel</button><button type="button" id="catLinkRefresh" class="btn ghost">重新比對未關聯 ORD</button></div></div>'+
       '<p class="muted">已關聯 <b>'+Number(data.linked||0)+'</b>／'+Number(data.line_orders||0)+' 張有效 LINE 訂單，仍有 <b style="color:#b42318">'+Number(data.unlinked||0)+'</b> 張待確認。LINE 訂貨方／收貨方若包含 C 編號，系統會優先依客戶與寄貨編號比對；編號不存在或歸屬衝突時請人工確認。</p>'+
       '<div class="catalog-toolbar"><input id="catLinkSearch" aria-label="搜尋未關聯訂單" placeholder="搜尋 ORD 編號、訂購人或收件人" value="'+esc(search||'')+'"><button id="catLinkSearchBtn" class="btn ghost" type="button">搜尋待確認訂單</button></div>'+
       '<div class="cat-link-order-list">'+
@@ -337,6 +337,27 @@ async function renderCustomerAdmin(){
 
     $('catLinkSearchBtn').onclick=function(){paintOrderLinkReview($('catLinkSearch').value.trim());};
     $('catLinkSearch').onkeydown=function(e){if(e.key==='Enter')paintOrderLinkReview(this.value.trim());};
+    $('catLinkExport').onclick=async function(){
+      var btn=this;btn.disabled=true;var label=btn.textContent;btn.textContent='正在匯出…';
+      try{
+        if(!window.XLSX)throw new Error('Excel 匯出元件尚未載入，請重新整理網頁。');
+        var all=await restAll('orders?select=tracking_id,order_date,buyer,receiver,receiver_phone,receiver_address,customer_link_review_reason,customer_link_checked_at&order_source=eq.line&customer_id=is.null&deleted_at=is.null&order=tracking_id.desc');
+        function code(v){var m=String(v||'').trim().toUpperCase().match(/^([A-Z][0-9]+(?:-[0-9]+)*)(?=$|[\\s｜:：、,，/／（(]|[\\u4e00-\\u9fff])/);return m?m[1]:'';}
+        function name(v){return String(v||'').trim().replace(/^[A-Za-z][0-9]+(?:-[0-9]+)*(?=$|[\\s｜:：、,，/／（(]|[\\u4e00-\\u9fff])[\\s｜:：、,，/／（(]*/,'').trim();}
+        var headers=['訂單編號','訂單日期','訂購方編號','訂購方名稱','收貨方編號','收件人名稱','收件電話','完整收件地址','未關聯原因','原始訂購方','原始收貨方','人工指定帳款客戶編號','人工指定寄貨編號','備註'];
+        var aoa=[headers].concat(all.map(function(o){return [
+          'ORD-'+String(o.tracking_id).padStart(6,'0'),o.order_date||'',code(o.buyer),name(o.buyer),
+          code(o.receiver),name(o.receiver),o.receiver_phone||'',o.receiver_address||'',
+          reasons[o.customer_link_review_reason]||o.customer_link_review_reason||'尚未檢查',
+          o.buyer||'',o.receiver||'','','',''
+        ];}));
+        var wb=XLSX.utils.book_new(),ws=XLSX.utils.aoa_to_sheet(aoa);
+        ws['!cols']=[{wch:17},{wch:14},{wch:17},{wch:23},{wch:17},{wch:24},{wch:17},{wch:36},{wch:29},{wch:26},{wch:26},{wch:22},{wch:20},{wch:28}];
+        ws['!autofilter']={ref:'A1:N'+Math.max(1,aoa.length)};
+        XLSX.utils.book_append_sheet(wb,ws,'未關聯LINE訂單');
+        XLSX.writeFile(wb,'LINE未關聯客戶訂單_'+new Date().toLocaleDateString('en-CA')+'.xlsx');
+      }catch(err){alert('匯出失敗：'+err.message);}finally{btn.disabled=false;btn.textContent=label;}
+    };
     $('catLinkRefresh').onclick=async function(){
       this.disabled=true;
       try{
