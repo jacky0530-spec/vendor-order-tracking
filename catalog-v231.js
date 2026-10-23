@@ -284,6 +284,7 @@ async function renderCustomerAdmin(){
   host.innerHTML='<h3>LINE 訂單與客戶關聯</h3><div class="muted">正在讀取待關聯訂單…</div>';
   try{
     var data=await rpc('catalog_customer_link_review',{p_limit:35,p_search:search||null});
+    var sharedShipping=await rpc('catalog_get_shared_customer_addresses',{});
     if(!host.isConnected)return;
     var reasons={
       no_verified_match:'尚未找到可核實的客戶',
@@ -361,7 +362,9 @@ async function renderCustomerAdmin(){
       });
       var shown=matches.slice(0,35);
       target.innerHTML=(shown.map(function(c){
-        var count=addresses.filter(function(a){return a.customer_id===c.id&&a.active;}).length;
+        var count=addresses.filter(function(a){
+          return a.active && (a.customer_id===c.id||sharedShipping.some(function(sh){return sh.customer_id===c.id&&sh.address_id===a.id;}));
+        }).length;
         return '<button type="button" class="cat-link-customer-result" data-cat-select-customer="'+esc(c.id)+'">'+
           '<b>'+esc(c.customer_code)+'｜'+esc(c.name)+'</b>'+
           '<span>'+esc(c.import_short_name||c.contact_name||'')+'　寄貨選項 '+count+' 筆</span></button>';
@@ -373,15 +376,22 @@ async function renderCustomerAdmin(){
       var inp=$('catLinkAddressQuery'),pick=$('catLinkAddressSelect'),summary=$('catLinkAddressCount');
       if(!selectedCustomerId){inp.disabled=true;pick.disabled=true;pick.innerHTML='<option value="">請先選擇主客戶</option>';summary.textContent='';return;}
       inp.disabled=false;pick.disabled=false;
-      var all=addresses.filter(function(a){return a.active&&a.customer_id===selectedCustomerId;});
+      var all=addresses.filter(function(a){
+        return a.active && (a.customer_id===selectedCustomerId || sharedShipping.some(function(sh){
+          return sh.customer_id===selectedCustomerId&&sh.address_id===a.id;
+        }));
+      });
       var q=normalized(inp.value);
       var shown=all.filter(function(a){
         return !q||normalized((a.import_ship_code||'')+' '+(a.receiver_name||'')+' '+(a.import_short_name||'')+' '+(a.phone||'')+' '+(a.address||'')).includes(q);
       });
       pick.innerHTML='<option value="">不指定寄貨選項（僅關聯主客戶）</option>'+shown.map(function(a){
-        return '<option value="'+esc(a.id)+'">'+esc((a.import_ship_code||'地址')+'｜'+(a.receiver_name||'未填收件人')+'｜'+(a.phone||'無電話')+'｜'+(a.address||'無地址'))+'</option>';
+        return '<option value="'+esc(a.id)+'">'+esc((a.customer_id!==selectedCustomerId?'【授權寄貨】':'')+
+          (a.import_ship_code||'地址')+'｜'+(a.receiver_name||'未填收件人')+'｜'+(a.phone||'無電話')+'｜'+(a.address||'無地址'))+'</option>';
       }).join('');
-      summary.textContent='顯示 '+shown.length+'／'+all.length+' 個寄貨選項。請核對收件人及地址後再選擇。';
+      var sharedCount=all.filter(function(a){return a.customer_id!==selectedCustomerId;}).length;
+      summary.textContent='顯示 '+shown.length+'／'+all.length+' 個寄貨選項'+
+        (sharedCount?'（含 '+sharedCount+' 個已授權跨主客戶寄貨）':'')+'。請核對收件人及地址後再選擇。';
     }
     function chooseCustomer(customerId){
       var c=customers.find(function(v){return v.id===customerId;});
@@ -429,6 +439,28 @@ async function renderCustomerAdmin(){
       (d.original_message?'<details class="cat-link-original"><summary>查看原始 LINE 訂單文字</summary><pre>'+esc(d.original_message)+'</pre></details>':'');
       $('catLinkOrderDetail').innerHTML=html;
     }
+    function getLineCode(value){
+      var match=String(value||'').trim().toUpperCase().match(/^(C[0-9]+(?:-[0-9]+)*)(?=$|[\\s｜:：、,，/／（(]|[\\u4e00-\\u9fff])/);
+      return match?match[1]:null;
+    }
+    function suggestAccountAndAddress(order){
+      var buyerCode=getLineCode(order.buyer),receiverCode=getLineCode(order.receiver);
+      var c=customers.find(function(x){return x.customer_code===buyerCode;});
+      if(!c)return;
+      chooseCustomer(c.id);
+      if(!receiverCode)return;
+      var available=addresses.filter(function(a){
+        return a.active&&a.import_ship_code===receiverCode &&
+          (a.customer_id===c.id||sharedShipping.some(function(sh){
+            return sh.customer_id===c.id&&sh.address_id===a.id;
+          }));
+      });
+      if(available.length!==1)return;
+      $('catLinkAddressQuery').value=receiverCode;
+      renderAddressOptions();
+      $('catLinkAddressSelect').value=available[0].id;
+      $('catLinkAddressCount').textContent+=' 已依 LINE 收件編號自動選取，請確認後儲存。';
+    }
     host.querySelectorAll('[data-cat-pick-unlinked]').forEach(function(b){
       b.onclick=async function(){
         var id=b.dataset.catPickUnlinked,item=rows.find(function(x){return x.order_id===id;});
@@ -444,7 +476,7 @@ async function renderCustomerAdmin(){
         try{
           var detail=await rpc('catalog_customer_link_order_detail',{p_order_id:id});
           if(selectedOrderId!==id||token!==detailRequestId)return;
-          renderOrderDetail(detail);detailReady=true;updateSaveButton();
+          renderOrderDetail(detail);detailReady=true;suggestAccountAndAddress(detail);updateSaveButton();
         }catch(err){
           if(token!==detailRequestId)return;
           $('catLinkOrderDetail').innerHTML='<div class="message error">訂單資訊讀取失敗：'+esc(err.message)+'</div>';
