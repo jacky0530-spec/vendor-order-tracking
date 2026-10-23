@@ -330,7 +330,7 @@ async function renderCustomerAdmin(){
             '<div id="catLinkAddressCount" class="muted" style="font-size:12px"></div>'+
           '</div>'+
         '</div>'+
-        '<div class="cat-link-actions"><button id="catLinkManualSave" type="button" class="btn primary" disabled>確認建立此 ORD 客戶關聯</button>'+
+        '<div class="cat-link-actions"><button id="catLinkManualSave" type="button" class="btn primary" disabled>建立關聯</button>'+
         '<button id="catLinkManualCancel" type="button" class="btn ghost">取消</button></div>'+
         '<div id="catLinkManualMsg" role="status" class="message"></div>'+
       '</div>';
@@ -496,16 +496,12 @@ async function renderCustomerAdmin(){
       var addressId=$('catLinkAddressSelect').value||null;
       var chosenAddress=addresses.find(function(a){return a.id===addressId;});
       var orderLabel=$('catLinkManualTitle').textContent;
-      var question='確定將 '+orderLabel+' 關聯至 '+c.customer_code+'｜'+c.name+
-        (chosenAddress?'，寄貨選項 '+(chosenAddress.import_ship_code||'')+'｜'+(chosenAddress.receiver_name||''):'（不指定寄貨選項）')+
-        '？\n僅修改關聯，不會變更原訂單內容。';
-      if(!confirm(question))return;
       this.disabled=true;
       try{
         var out=await rpc('catalog_set_order_customer',{
           p_order_id:selectedOrderId,p_customer_id:cid,p_address_id:addressId
         });
-        alert('已完成 '+out.order_no+' → '+out.customer_code+' 關聯。');
+        /* updated list displays saved association */
         await paintOrderLinkReview(search);
       }catch(err){$('catLinkManualMsg').textContent='指定失敗：'+err.message;updateSaveButton();}
     };
