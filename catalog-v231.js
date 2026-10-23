@@ -501,8 +501,16 @@ async function renderCustomerAdmin(){
         var out=await rpc('catalog_set_order_customer',{
           p_order_id:selectedOrderId,p_customer_id:cid,p_address_id:addressId
         });
-        /* updated list displays saved association */
         await paintOrderLinkReview(search);
+        var panel=$('catCustomerLinkReview');
+        var heading=panel&&panel.querySelector('.catalog-head');
+        if(heading){
+          var notice=document.createElement('div');
+          notice.className='message success';
+          notice.setAttribute('role','status');
+          notice.textContent='已建立 '+out.order_no+' → '+out.customer_code+' 的客戶關聯，可繼續處理下一張訂單。';
+          heading.insertAdjacentElement('afterend',notice);
+        }
       }catch(err){$('catLinkManualMsg').textContent='指定失敗：'+err.message;updateSaveButton();}
     };
   }catch(err){
