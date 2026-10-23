@@ -290,12 +290,18 @@ async function renderCustomerAdmin(){
       shipping_ambiguous:'寄貨資料符合多位客戶',
       buyer_receiver_conflict:'訂購人與寄貨歸屬衝突',
       buyer_ambiguous:'訂購人名稱有重複',
+      buyer_code_unknown:'訂貨方的 C 編號未建檔，請核對主客戶或寄貨編號',
+      receiver_code_unknown:'收貨方的 C 編號未建檔，請核對寄貨選項',
+      explicit_code_conflict:'訂貨方與收貨方的 C 編號歸屬不同主客戶',
+      explicit_buyer_code_conflict:'訂貨方 C 編號對應了不同帳款歸屬',
+      explicit_receiver_code_conflict:'收貨方 C 編號對應了不同帳款歸屬',
+      explicit_code_unresolved:'LINE 客戶編號無法確認',
       未檢查:'尚未檢查'
     };
     var rows=data.results||[];
     host.innerHTML=
       '<div class="catalog-head"><h3>LINE 訂單與客戶關聯</h3><button type="button" id="catLinkRefresh" class="btn ghost">重新比對未關聯 ORD</button></div>'+
-      '<p class="muted">已關聯 <b>'+Number(data.linked||0)+'</b>／'+Number(data.line_orders||0)+' 張有效 LINE 訂單，仍有 <b style="color:#b42318">'+Number(data.unlinked||0)+'</b> 張待確認。請先核對訂單詳情，再指定帳款主客戶。</p>'+
+      '<p class="muted">已關聯 <b>'+Number(data.linked||0)+'</b>／'+Number(data.line_orders||0)+' 張有效 LINE 訂單，仍有 <b style="color:#b42318">'+Number(data.unlinked||0)+'</b> 張待確認。LINE 訂貨方／收貨方若包含 C 編號，系統會優先依客戶與寄貨編號比對；編號不存在或歸屬衝突時請人工確認。</p>'+
       '<div class="catalog-toolbar"><input id="catLinkSearch" aria-label="搜尋未關聯訂單" placeholder="搜尋 ORD 編號、訂購人或收件人" value="'+esc(search||'')+'"><button id="catLinkSearchBtn" class="btn ghost" type="button">搜尋待確認訂單</button></div>'+
       '<div class="cat-link-order-list">'+
         (rows.map(function(o){
