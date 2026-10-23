@@ -440,7 +440,7 @@ async function renderCustomerAdmin(){
       $('catLinkOrderDetail').innerHTML=html;
     }
     function getLineCode(value){
-      var match=String(value||'').trim().toUpperCase().match(/^(C[0-9]+(?:-[0-9]+)*)(?=$|[\\s｜:：、,，/／（(]|[\\u4e00-\\u9fff])/);
+      var match=String(value||'').trim().toUpperCase().match(/^(C[0-9]+(?:-[0-9]+)*)(?=$|[\s｜:：、,，/／（(]|[\u4e00-\u9fff])/);
       return match?match[1]:null;
     }
     function suggestAccountAndAddress(order){
