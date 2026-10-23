@@ -325,12 +325,12 @@ async function renderCustomerAdmin(){
           '<div>'+
             '<label for="catLinkAddressQuery">搜尋寄貨選項（非必要）</label>'+
             '<input type="search" id="catLinkAddressQuery" autocomplete="off" placeholder="姓名、寄貨編號、電話或地址" disabled>'+
-            '<label for="catLinkAddressSelect">確認寄貨選項</label>'+
+            '<label for="catLinkAddressSelect">選擇收件資料</label>'+
             '<select id="catLinkAddressSelect" disabled><option value="">請先選擇主客戶</option></select>'+
             '<div id="catLinkAddressCount" class="muted" style="font-size:12px"></div>'+
           '</div>'+
         '</div>'+
-        '<div class="cat-link-actions"><button id="catLinkManualSave" type="button" class="btn primary" disabled>建立關聯</button>'+
+        '<div class="cat-link-actions"><button id="catLinkManualSave" type="button" class="btn primary" disabled>建立關聯（直接儲存）</button>'+
         '<button id="catLinkManualCancel" type="button" class="btn ghost">取消</button></div>'+
         '<div id="catLinkManualMsg" role="status" class="message"></div>'+
       '</div>';
@@ -459,7 +459,7 @@ async function renderCustomerAdmin(){
       $('catLinkAddressQuery').value=receiverCode;
       renderAddressOptions();
       $('catLinkAddressSelect').value=available[0].id;
-      $('catLinkAddressCount').textContent+=' 已依 LINE 收件編號自動選取，請確認後儲存。';
+      $('catLinkAddressCount').textContent+=' 已依 LINE 收件編號自動帶入；按「建立關聯」即可直接儲存。';
     }
     host.querySelectorAll('[data-cat-pick-unlinked]').forEach(function(b){
       b.onclick=async function(){
