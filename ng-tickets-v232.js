@@ -268,7 +268,7 @@ async function openIssueEditor(current,customers,container){
    }
    var completed=$('issueCompleted').checked;
    var finishDate=$('issueCompleteDate').value||today();
-   if(completed&&!/^\\d{4}-\\d{2}-\\d{2}$/.test(finishDate))throw Error('請輸入正確的完成日期');
+   if(completed&&!/^\d{4}-\d{2}-\d{2}$/.test(finishDate)){notice.className='message error';notice.textContent='請輸入正確的完成日期';return;}
    var values={
      case_date:date,status:$('issueStatus').value,primary_person:primary,
      secondary_person:$('issueSecondary').value.trim()||null,
