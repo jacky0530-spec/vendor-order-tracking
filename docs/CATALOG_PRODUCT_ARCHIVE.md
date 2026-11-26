@@ -46,3 +46,20 @@ ALTER TABLE public.catalog_products
 已確認前端 JavaScript 可被編譯解析；資料庫欄位、RPC、角色 EXECUTE 權限存在；以單一商品進行交易式刪除／還原檢查後 ROLLBACK，資料庫 4 筆商品維持不變。
 
 正式 GitHub Pages 的使用者端實際操作仍需在已登入管理員的瀏覽器驗證。
+
+## V2.85 客戶端顯示過濾修正（2026-11-26）
+### 問題
+V2.84 的 `catalog_storefront` 檢視未限定 `active`、`published`、`archived_at`，且客戶端 `paintStore` 沒有二次過濾，造成已刪除商品 9331、9605 仍在客戶商品清單；9126-02 雖尚未上架也被顯示。
+
+### 修正
+- Supabase migration：`catalog_storefront_hide_archived_unpublished_products_20261126`
+- `catalog_storefront` 加入 `WHERE p.active IS TRUE AND p.published IS TRUE AND p.archived_at IS NULL AND public.catalog_can_view_product(p.id)`
+- 客戶 `catalog-v231.js`：`loadStorefront()` 的 API 查詢加上 `active=eq.true&published=eq.true`，載入後、`paintStore()`、`openStoreDetail()` 三處增加保護。
+- `index.html`、`admin-tools-v228.js` 更新至 V2.85，快取參數 `285-hide-archived-products`
+- `sale_end_at` 已截止但仍上架之商品，仍可顯示但不可加入購物車；沒有因為結單而自動封存。
+
+### 驗證
+- Supabase 客戶身分查詢 `catalog_storefront`，修正後僅 1 件符合顯示條件，未上架／停用 0 件。
+- GitHub V2.85 `catalog-v231.js` JavaScript 語法檢查通過。
+- 已刪除商品不再透過客戶商城檢視讀取；歷史採購單及還原流程維持不變。
+- 正式 iPad Safari 使用者端重新載入及手動測試尚未驗證。
