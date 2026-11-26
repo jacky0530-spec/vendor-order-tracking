@@ -234,7 +234,7 @@ function renderAdminProducts(view){
   });
   async function changeArchive(id,restore){
     var p=state.products.find(function(x){return x.id===id;});if(!p)return;
-    if(!restore&&!confirm('確定刪除「'+p.product_code+' '+p.name+'」？\\n\\n商品會立即從商城下架並從一般清單隱藏；歷史訂單、採購單、規格與圖片皆會保留，可從「已刪除」還原。'))return;
+    if(!restore&&!confirm('確定刪除「'+p.product_code+' '+p.name+'」？\n\n商品會立即從商城下架並從一般清單隱藏；歷史訂單、採購單、規格與圖片皆會保留，可從「已刪除」還原。'))return;
     var b=el.querySelector('[data-cat-'+(restore?'restore':'delete')+'="'+id+'"]');
     if(b){b.disabled=true;b.textContent='處理中…';}
     try{
