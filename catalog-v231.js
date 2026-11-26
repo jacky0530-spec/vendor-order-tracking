@@ -99,7 +99,7 @@ function ensureAdminTab(){
   if($('tab-catalog'))return;
   var nav=document.querySelector('#adminView .tabs'); if(!nav)return;
   var b=document.createElement('button');b.className='tab';b.dataset.tab='catalog';b.textContent='批發商城';nav.appendChild(b);
-  var panel=document.createElement('div');panel.id='tab-catalog';panel.className='tab-panel hidden';
+  var panel=document.createElement('div');panel.id='tab-catalog';panel.className='tab-panel hidden cat-products-active';
   panel.innerHTML='<div class="card section-card"><div class="catalog-head"><div><h2>批發商城</h2><p class="muted">商品指定出貨廠商；價格、權限與購物車以客戶為主。</p></div><button id="catNewProduct" class="btn primary" type="button">＋新增商品</button></div><div class="catalog-subnav"><button class="active" data-cat-admin="products">商品管理</button><button data-cat-admin="customers">客戶資料</button><button data-cat-admin="levels">客戶等級</button><button data-cat-admin="preview">客戶視角預覽</button><button data-cat-admin="requests">客戶採購單</button><button data-cat-admin="ng">待處理問題單</button><button data-cat-admin="sales">銷售報表</button></div><div id="catAdminProducts"></div><div id="catAdminCustomers" class="hidden"></div><div id="catAdminLevels" class="hidden"></div><div id="catAdminPreview" class="hidden"></div><div id="catAdminRequests" class="hidden"></div><div id="catAdminNg" class="hidden"></div><div id="catSalesReport" class="hidden"></div></div>';
   document.querySelector('#adminView').appendChild(panel);
   b.addEventListener('click',function(){
@@ -110,6 +110,7 @@ function ensureAdminTab(){
   nav.querySelectorAll('.tab').forEach(function(x){if(x!==b)x.addEventListener('click',function(){panel.classList.add('hidden');});});
   panel.querySelectorAll('[data-cat-admin]').forEach(function(x){x.addEventListener('click',function(){
     panel.querySelectorAll('[data-cat-admin]').forEach(function(z){z.classList.remove('active');});x.classList.add('active');
+    panel.classList.toggle('cat-products-active',x.dataset.catAdmin==='products');
     $('catAdminProducts').classList.toggle('hidden',x.dataset.catAdmin!=='products');
     $('catAdminCustomers').classList.toggle('hidden',x.dataset.catAdmin!=='customers');
     $('catAdminLevels').classList.toggle('hidden',x.dataset.catAdmin!=='levels');
@@ -124,6 +125,17 @@ function ensureAdminTab(){
     if(x.dataset.catAdmin==='customers')renderCustomerAdmin();
     if(x.dataset.catAdmin==='levels')renderLevelAdmin();
   });});
+  // The floating action is available only while the administrator is viewing 商品管理.
+  function positionFloatingAddButton(){
+    var header=document.querySelector('header.topbar'),height=header?header.getBoundingClientRect().height:74;
+    panel.style.setProperty('--cat-float-top',Math.max(86,Math.ceil(height)+12)+'px');
+  }
+  positionFloatingAddButton();
+  window.addEventListener('resize',positionFloatingAddButton);
+  if(window.ResizeObserver){
+    var buttonHeader=document.querySelector('header.topbar');
+    if(buttonHeader)new ResizeObserver(positionFloatingAddButton).observe(buttonHeader);
+  }
   $('catNewProduct').addEventListener('click',function(){openProductEditor(null);});
 }
 
@@ -854,7 +866,7 @@ function ensureProductModal(){
   document.body.appendChild(d);d.querySelectorAll('[data-cat-close]').forEach(function(x){x.addEventListener('click',function(){if($('catSaveProduct').disabled)return;resetPendingProductImages();d.classList.add('hidden');});});$('catSaveProduct').addEventListener('click',saveProduct);document.addEventListener('paste',handleProductImagePaste);
 }
 
-// V2.87: Make product-editor amounts replaceable with one tap, including iPad Safari.
+// V2.89: Share tap-to-replace numeric input behavior across product editing and customer order quantities.
 // Keep numeric validation explicit because inputmode alone does not validate text fields.
 function normalizeProductNumberText(value){
   var raw=String(value==null?'':value).trim()
@@ -1343,6 +1355,7 @@ function openStoreDetail(id,focusQty){
   ensureStoreModal();var p=state.products.find(function(x){return x.id===id&&x.active===true&&x.published===true&&x.archived_at==null;});if(!p)return;var imgs=state.images.filter(function(x){return x.product_id===id;}).sort(function(a,b){return (a.sort_order||0)-(b.sort_order||0);}),vars=getVariants(id),main=imgs[0];
   $('catStoreTitle').textContent=p.product_code+' '+p.name;
   $('catStoreDetail').innerHTML='<div class="catalog-product-detail"><div class="catalog-sticky-gallery"><img id="catMainImg" class="catalog-main-image" src="'+esc(main?publicImage(main.storage_path):'')+'">'+(imgs.length?'<div class="catalog-thumbs">'+imgs.map(function(im){return '<button data-thumb="'+im.id+'"><img src="'+esc(publicImage(im.storage_path))+'"></button>';}).join('')+'</div><div class="catalog-download-row"><button id="catDownloadCurrent" class="btn ghost">下載目前原圖</button><button id="catDownloadAll" class="btn secondary">下載全部原圖 ('+imgs.length+')</button></div>':'<div class="catalog-empty">尚無商品圖片</div>')+'</div><div><div class="catalog-price">'+money(p.effective_price)+'</div><div class="catalog-meta"><span class="catalog-pill">'+esc(saleState(p))+'</span><span class="catalog-pill">最低 '+esc(p.effective_min_order_qty)+' '+esc(p.order_unit)+'</span><span class="catalog-pill">全站累計訂購 '+Number(p.ordered_quantity||0)+' '+esc(p.order_unit)+'</span>'+(p.max_sales_quantity!=null?'<span class="catalog-pill">銷售上限 '+Number(p.max_sales_quantity)+' '+esc(p.order_unit)+'</span>':'')+(p.pack_text?'<span class="catalog-pill">'+esc(p.pack_text)+'</span>':'')+'</div><div class="catalog-copy-bar"><button type="button" id="catCopyDescription" class="btn secondary">複製商品文案</button><span class="muted" id="catCopyFeedback" role="status"></span></div><p class="catalog-product-copy" style="white-space:pre-wrap;line-height:1.7">'+esc(p.description||'')+'</p>'+(p.expected_ship_date?'<p><b>預計出貨：</b>'+esc(p.expected_ship_date)+'</p>':'')+(vars.length?'<label>款式<select id="catBuyVariant" style="width:100%;margin-top:5px">'+vars.map(function(v){return '<option value="'+v.id+'" data-delta="'+v.price_delta+'" data-min="'+(v.min_order_qty||'')+'">'+esc(v.name)+(Number(v.price_delta)?'（'+(Number(v.price_delta)>0?'+':'')+money(v.price_delta)+'）':'')+'</option>';}).join('')+'</select></label>':'')+'<label style="display:block;margin-top:10px">數量<input id="catBuyQty" type="number" min="'+esc(p.effective_min_order_qty)+'" step="any" value="'+esc(p.effective_min_order_qty)+'" style="width:100%;margin-top:5px"></label><button id="catAddCart" class="btn primary wide" style="margin-top:12px" '+(saleOpen(p)?'':'disabled')+'>加入購物車</button><div id="catStoreMsg" class="message"></div></div></div>';
+  setupProductNumericInputs($('catStoreDetail'));
   var copyBtn=$('catCopyDescription');
   if(copyBtn)copyBtn.onclick=async function(){
     var content=String(p.description||'').trim(),msg=$('catCopyFeedback');
@@ -1361,8 +1374,19 @@ function openStoreDetail(id,focusQty){
   document.querySelectorAll('[data-thumb]').forEach(function(b){b.onclick=function(){selected=imgs.find(function(x){return x.id===b.dataset.thumb;});$('catMainImg').src=publicImage(selected.storage_path);};});
   if($('catDownloadCurrent'))$('catDownloadCurrent').onclick=function(){if(selected)downloadImage(selected);};
   if($('catDownloadAll'))$('catDownloadAll').onclick=async function(){for(var i=0;i<imgs.length;i++){await downloadImage(imgs[i]);await new Promise(function(r){setTimeout(r,250);});}};
-  if($('catBuyVariant'))$('catBuyVariant').onchange=function(){var op=this.selectedOptions[0],mn=Number(op.dataset.min||p.effective_min_order_qty);$('catBuyQty').min=mn;if(Number($('catBuyQty').value)<mn)$('catBuyQty').value=mn;};
-  $('catAddCart').onclick=async function(){var m=$('catStoreMsg');try{this.disabled=true;await rpc('catalog_add_to_cart',{p_product_id:p.id,p_variant_id:$('catBuyVariant')?$('catBuyVariant').value:null,p_quantity:Number($('catBuyQty').value)});m.textContent='已加入購物車';m.className='message success';await updateCartCount();}catch(e){m.textContent=e.message;m.className='message error';}finally{this.disabled=false;}};
+  if($('catBuyVariant'))$('catBuyVariant').onchange=function(){var op=this.selectedOptions[0],mn=Number(op.dataset.min||p.effective_min_order_qty);var qtyInput=$('catBuyQty');qtyInput.dataset.catNumericMin=String(mn);qtyInput.setAttribute('min',String(mn));
+    var rawQty=normalizeProductNumberText(qtyInput.value);
+    if(rawQty!==''&&Number.isFinite(Number(rawQty))&&Number(rawQty)<mn)qtyInput.value=String(mn);};
+  $('catAddCart').onclick=async function(){
+    var m=$('catStoreMsg');
+    try{
+      var qtyInput=$('catBuyQty'),parsed=validateProductNumericInput(qtyInput);
+      if(!parsed||!Number.isFinite(parsed.number)||parsed.number<=0)
+        throw new Error('請輸入大於零的有效訂購數量');
+      qtyInput.value=parsed.raw;
+      this.disabled=true;
+      await rpc('catalog_add_to_cart',{p_product_id:p.id,p_variant_id:$('catBuyVariant')?$('catBuyVariant').value:null,p_quantity:parsed.number});
+      m.textContent='已加入購物車';m.className='message success';await updateCartCount();}catch(e){m.textContent=e.message;m.className='message error';}finally{this.disabled=false;}};
   $('catStoreModal').classList.remove('hidden');if(focusQty)setTimeout(function(){$('catBuyQty').focus();},100);
 }
 async function downloadImage(im){
@@ -1527,6 +1551,7 @@ async function openCustomerPurchaseEditor(requestId){
         '<span class="cat-purchase-edit-subtotal" data-pedit-subtotal="'+i+'">'+money(estimate(l))+'</span>'+
         '<button type="button" class="btn ghost" data-pedit-remove="'+i+'">移除</button></div>';
     }).join('')||'<div class="catalog-empty">尚無商品。請按「新增商品」。</div>';
+    setupProductNumericInputs(holder);
     updateEstimate();
   }
   function updateEstimate(){
@@ -1557,7 +1582,8 @@ async function openCustomerPurchaseEditor(requestId){
   holder.oninput=function(e){
     var i=Number(e.target.dataset.peditIndex);if(!Number.isInteger(i)||!rows[i])return;
     if(e.target.dataset.peditField==='quantity'){
-      rows[i].quantity=Number(e.target.value);
+      var raw=normalizeProductNumberText(e.target.value);
+      rows[i].quantity=raw!==''&&/^(?:\d+(?:\.\d*)?|\.\d+)$/.test(raw)?Number(raw):NaN;
       updateEstimate();
     }
   };
@@ -1579,6 +1605,17 @@ async function openCustomerPurchaseEditor(requestId){
   $('catPurchaseEditSave').onclick=async function(){
     if(saving)return;
     if(!rows.length){status.textContent='至少保留一筆商品；如需取消整筆請聯繫管理員。';status.className='message error';return;}
+    try{
+      holder.querySelectorAll('input[data-pedit-field="quantity"]').forEach(function(input){
+        var parsed=validateProductNumericInput(input);
+        if(!parsed||parsed.number<=0)throw new Error('訂購數量必須大於零，請直接輸入新數量');
+        input.value=parsed.raw;
+        var i=Number(input.dataset.peditIndex);
+        if(rows[i])rows[i].quantity=parsed.number;
+      });
+    }catch(err){
+      status.textContent='數量輸入有誤：'+err.message;status.className='message error';return;
+    }
     if(rows.some(function(x){return !Number.isFinite(x.quantity)||x.quantity<=0})){
       status.textContent='所有商品數量必須大於零。';status.className='message error';return;
     }
