@@ -56,8 +56,11 @@ async function runJob(job:any){
         throw new Error('商品資料已變動、已下架或已結單，排程已停止，請重新建立 DM');
     }
     const img=assetUrl(String(job.dm_storage_path));
-    const probe=await fetch(img,{method:'HEAD'});
-    if(!probe.ok)throw new Error('DM 圖片無法公開讀取：HTTP '+probe.status);
+    const preview=assetUrl(String(job.preview_storage_path));
+    const [probe,previewProbe]=await Promise.all([fetch(img,{method:'HEAD'}),fetch(preview,{method:'HEAD'})]);
+    if(!probe.ok||!previewProbe.ok)throw new Error('DM 或 LINE 預覽圖片無法公開讀取');
+    if(Number(previewProbe.headers.get('content-length')||0)>1000000)
+      throw new Error('LINE 預覽圖片超過 1MB，請重新建立排程');
     const intro=String(job.intro||'新品上架，歡迎查看商城！').slice(0,250);
     const lines=job.product_snapshot.map((p:any)=>
       '・'+String(p.code)+'｜'+String(p.name).slice(0,48));
@@ -69,7 +72,7 @@ async function runJob(job:any){
       headers:{authorization:'Bearer '+LINE_TOKEN,'content-type':'application/json',
         'X-Line-Retry-Key':String(job.id)},
       body:JSON.stringify({to:g.line_group_id,messages:[
-        {type:'image',originalContentUrl:img,previewImageUrl:img},
+        {type:'image',originalContentUrl:img,previewImageUrl:preview},
         {type:'text',text:message}
       ]})
     });
