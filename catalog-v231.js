@@ -264,11 +264,15 @@ function renderAdminProducts(view){
       '</div><div class="catalog-card-body"><div class="catalog-code">'+esc(p.product_code)+'</div>'+
       '<div class="catalog-name">'+esc(p.name)+'</div><div class="catalog-price">'+money(p.base_price)+'</div>'+
       '<div class="catalog-meta"><span class="catalog-pill '+(!archived&&p.published?'good':'warn')+'">'+
-      (archived?'已刪除（可還原）':p.published?'已上架':p.active?'草稿':'已停用')+'</span>'+
+      (archived?'已刪除（可還原）':p.published&&p.active?(saleState(p)==='已結單'?'已結單':saleState(p)==='尚未開賣'?'預約開賣':'已上架'):p.active?'草稿':'已停用')+'</span>'+
       '<span class="catalog-pill">'+esc(p.sale_mode==='in_stock'?'現貨':'預購')+'</span>'+
       '<span class="catalog-pill">'+n+' 張圖</span><span class="catalog-pill">'+
       esc(p.visibility_mode==='all'?'全部客戶':'指定販售')+'</span></div>'+
       (archived?'<div class="muted" style="font-size:12px">刪除時間：'+esc(fmtDate(p.archived_at))+'</div>':'')+
+      (archived?'':'<div class="cat-quick-publish-row"><button type="button" class="btn '+(p.published?'ghost cat-publish-off':'primary cat-publish-on')+
+         '" data-cat-quick-publish="'+esc(p.id)+'" data-cat-publish-target="'+(p.published?'0':'1')+
+         '" aria-label="'+esc(p.product_code+' '+(p.published?'下架':'立即上架'))+'">'+
+         (p.published?'下架商品':'立即上架')+'</button></div>')+
       '<div class="catalog-card-actions">'+(archived?
         btn('還原為草稿','btn secondary','data-cat-restore="'+esc(p.id)+'"'):
         btn('編輯','btn secondary','data-cat-edit="'+esc(p.id)+'"')+
@@ -317,6 +321,52 @@ function renderAdminProducts(view){
       if(b){b.disabled=false;b.textContent=restore?'還原為草稿':'刪除';}
     }
   }
+  // Card-level one-click publish/unpublish, separate from full product editing.
+  el.querySelectorAll('[data-cat-quick-publish]').forEach(function(b){
+    b.onclick=async function(){
+      if(b.disabled)return;
+      var id=b.dataset.catQuickPublish,
+          publish=b.dataset.catPublishTarget==='1',
+          product=state.products.find(function(x){return x.id===id;});
+      if(!product||product.archived_at){alert('商品已刪除或不存在，請重新整理。');return;}
+      var controls=[].slice.call(b.closest('.catalog-card').querySelectorAll('button'));
+      controls.forEach(function(x){x.disabled=true;});
+      var before=b.textContent;b.textContent=publish?'上架中…':'下架中…';
+      try{
+        var answer=await rpc('catalog_quick_set_publication',{
+          p_product_id:id,p_publish:publish,p_override_schedule:false
+        });
+        if(answer&&answer.ok===false&&answer.reason==='schedule_conflict'){
+          var st=product.sale_start_at&&new Date(product.sale_start_at).getTime()>Date.now();
+          var en=product.sale_end_at&&new Date(product.sale_end_at).getTime()<=Date.now();
+          var why=(st?'原訂開賣時間在未來，將改為現在開賣。\\n':'')+
+            (en?'原訂結單時間已過，將清除結單時間。\\n':'');
+          if(!confirm('「'+product.product_code+' '+product.name+'」目前有時間排程：\\n'+
+            why+'\\n確定立即上架嗎？'))return;
+          answer=await rpc('catalog_quick_set_publication',{
+            p_product_id:id,p_publish:true,p_override_schedule:true
+          });
+        }
+        if(!answer||answer.ok!==true)throw new Error(answer&&answer.message||'上架狀態更新失敗');
+        var saved={
+          search:$('catAdminSearch')?.value||'',
+          mode:$('catAdminMode')?.value||'',
+          publication:$('catAdminPub')?.value||'',
+          archive:$('catAdminArchived')?.value||'active'
+        };
+        await loadCommonAdmin();
+        renderAdminProducts(saved.archive);
+        $('catAdminSearch').value=saved.search;
+        $('catAdminMode').value=saved.mode;
+        $('catAdminPub').value=saved.publication;
+        $('catAdminSearch').dispatchEvent(new Event('input',{bubbles:true}));
+      }catch(e){
+        alert((publish?'立即上架':'下架')+'失敗：'+e.message);
+      }finally{
+        if(b.isConnected){b.textContent=before;controls.forEach(function(x){x.disabled=false;});}
+      }
+    };
+  });
   el.querySelectorAll('[data-cat-delete]').forEach(function(b){
     b.onclick=function(){changeArchive(b.dataset.catDelete,false);};
   });
