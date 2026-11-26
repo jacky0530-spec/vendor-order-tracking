@@ -59,60 +59,266 @@ async function upload(tid,msgId,file,validated){
  if(!r.ok){var info=await r.text();throw Error('附件上傳失敗：'+info);}
  await api('ng_photos',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ticket_id:tid,message_id:msgId||null,storage_path:path,filename:file.name,mime_type:file.type,video_duration_seconds:media.seconds})});
 }
+
+var issueStatuses=[
+  ['new','尚未處理'],['processing','處理中'],['waiting_vendor','等待廠商'],
+  ['waiting_customer','等待客人'],['resolved','已解決'],['closed','已結案']
+];
+var issueCategories=['NG回報','訂單貨況','缺貨回報','其他'];
+function statusLabel(s){var hit=issueStatuses.find(function(x){return x[0]===s;});return hit?hit[1]:s;}
+function today(){var d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');}
+function displayDate(d){return d?String(d).slice(0,10):'—';}
+function toastError(e){alert('待處理問題單：'+(e&&e.message||e));}
+function managerOnly(mode){return mode==='admin';}
+
 async function render(mode,container){
- var root=$(container);if(!root)return;root.innerHTML='<div class="catalog-empty">載入 NG 問題單…</div>';
+ var root=$(container);if(!root)return;
+ if(!managerOnly(mode)){root.innerHTML='<p class="catalog-empty">本功能已改為管理者內部維護。</p>';return;}
+ root.innerHTML='<div class="catalog-empty">正在載入待處理問題單…</div>';
  try{
-  var tickets=await api('ng_tickets?select=*&order=created_at.desc&limit=150');
-  var profile=mode==='customer'?await api('user_profiles?select=customer_id&user_id=eq.'+session().user.id):[];
-  var customers=mode==='admin'?await api('customers?select=id,customer_code,name'):[];
-  var customerMap={};customers.forEach(function(c){customerMap[c.id]=c;});
-  root.innerHTML='<div class="catalog-head"><h3>NG 商品問題單</h3><button class="btn ghost" id="ngReload">重新整理</button></div>'+
-   (mode==='customer'?'<div class="card inner-card"><h3>提出商品問題</h3><div class="catalog-form-grid"><label>問題主旨<input id="ngSubject" placeholder="例如：手套破損"></label><label>商品貨號<input id="ngCode" placeholder="例如 9605"></label><label>訂單／採購單編號<input id="ngOrder" placeholder="選填"></label><label class="span2">問題說明<textarea id="ngDesc" rows="3" placeholder="請描述商品、數量及瑕疵情況"></textarea></label><label class="span2">照片／影片（影片 30 秒內、50MB 以下；照片每張 10MB 以下）<input id="ngNewFiles" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime,video/webm" multiple></label></div><button class="btn primary" id="ngCreate">送出問題單</button><div id="ngCreateMsg" class="message"></div></div>':'<p class="muted">可查看所有客戶問題、回覆多次處理進度、更新案件狀態。</p>')+
-   (mode==='admin'?'<div style="margin:10px 0"><input id="ngTicketSearch" style="width:100%" placeholder="搜尋客戶編號、姓名、問題單編號、貨號或問題內容"></div>':'')+
-   (tickets.map(function(t){var customer=customerMap[t.customer_id],label=customer?customer.customer_code+' '+customer.name:'未找到客戶資料';return '<div class="catalog-myorder" data-ng-search="'+esc(('NG-'+String(t.ticket_number).padStart(6,'0')+' '+label+' '+t.subject+' '+(t.product_code||'')+' '+t.description).toLowerCase())+'"><div class="catalog-head"><div><b>NG-'+String(t.ticket_number).padStart(6,'0')+'｜'+esc(t.subject)+'</b>'+(mode==='admin'?'<div style="font-weight:700;margin-top:4px">客戶：'+esc(label)+'</div>':'')+'<div class="muted">'+esc(badge(t.status))+'｜'+esc(time(t.created_at))+'｜商品 '+esc(t.product_code||'—')+'｜'+esc(t.order_reference||'')+'</div></div><button class="btn secondary" data-ng-open="'+t.id+'">查看與回覆</button></div><div>'+esc(t.description)+'</div><div id="ngThread-'+t.id+'"></div></div>';}).join('')||'<div class="catalog-empty">尚無 NG 問題單。</div>');
-  $('ngReload').onclick=function(){render(mode,container);};
-  if(mode==='admin')$('ngTicketSearch').oninput=function(){var q=this.value.trim().toLowerCase();root.querySelectorAll('[data-ng-search]').forEach(function(card){card.style.display=card.dataset.ngSearch.includes(q)?'':'none';});};
-  root.querySelectorAll('[data-ng-open]').forEach(function(b){b.onclick=function(){openThread(mode,b.dataset.ngOpen);};});
-  if(mode==='customer')$('ngCreate').onclick=async function(){
-   var btn=this,msg=$('ngCreateMsg'),sub=$('ngSubject').value.trim(),desc=$('ngDesc').value.trim();
-   if(!sub||!desc){msg.textContent='請填寫主旨與問題說明';return;}
-   btn.disabled=true;msg.textContent='正在送出…';
-   try{
-    var candidateFiles=Array.from($('ngNewFiles').files||[]),validated=[];
-    for(var mediaFile of candidateFiles)validated.push(await validateMedia(mediaFile));
-    var row=await api('ng_tickets',{method:'POST',headers:{'Content-Type':'application/json',Prefer:'return=representation'},body:JSON.stringify({customer_id:profile[0].customer_id,subject:sub,description:desc,product_code:$('ngCode').value.trim()||null,order_reference:$('ngOrder').value.trim()||null})});
-    var files=Array.from($('ngNewFiles').files||[]);var errors=[];
-    for(var k=0;k<files.length;k++){try{await upload(row[0].id,null,files[k],validated[k]);}catch(e){errors.push(files[k].name+': '+e.message);}}
-    if(errors.length)alert('問題單已建立，但部分附件未上傳：\n'+errors.join('\n'));
-    await render(mode,container);
-   }catch(e){msg.textContent=e.message;btn.disabled=false;}
-  };
- }catch(e){root.innerHTML='<div class="message error">讀取失敗：'+esc(e.message)+'</div>';}
+   var parts=await Promise.all([
+     api('ng_tickets?select=*&order=created_at.desc&limit=500'),
+     api('customers?select=id,customer_code,name&order=customer_code.asc')
+   ]);
+   var tickets=parts[0]||[],customers=parts[1]||[];
+   var byCustomer=new Map(customers.map(function(c){return [c.id,c];}));
+   var total=tickets.length,completed=tickets.filter(function(t){return t.is_completed;}).length;
+   root.innerHTML='<div class="catalog-head"><div><h3>待處理問題單</h3>'+
+     '<p class="muted">依照「團購待處理件」表單整理：登記日期、主要人、次要人、問題類型、案件狀態、問題內容、備註與完成狀態。僅管理者／員工可新增和維護。</p></div>'+
+     '<div class="issue-toolbar-buttons"><button class="btn primary" id="issueAdd" type="button">＋新增問題單</button>'+
+     '<button class="btn ghost" id="issueReload" type="button">重新整理</button></div></div>'+
+     '<div class="issue-summary">共 '+total+' 筆｜未完成 '+(total-completed)+' 筆｜已完成 '+completed+' 筆</div>'+
+     '<div class="issue-filters"><input type="search" id="issueSearch" placeholder="搜尋主要人、次要人、問題內容、類型、單號">'+
+     '<select id="issueStatusFilter"><option value="">全部案件狀態</option>'+issueStatuses.map(function(x){return '<option value="'+x[0]+'">'+x[1]+'</option>';}).join('')+'</select>'+
+     '<select id="issueCompleteFilter"><option value="active">未完成優先</option><option value="all">全部案件</option><option value="done">已完成</option></select></div>'+
+     '<div id="issueRows">'+(tickets.map(function(t){
+       var c=byCustomer.get(t.customer_id);
+       var main=t.primary_person||c&&c.name||'未填主要人';
+       var label=t.is_completed?'已完成':statusLabel(t.status);
+       var search=['PN-'+String(t.ticket_number).padStart(6,'0'),t.primary_person,t.secondary_person,
+         t.issue_type,t.description,t.subject,t.product_code,t.order_reference,c&&c.customer_code,c&&c.name,t.internal_notes].join(' ').toLowerCase();
+       return '<article class="issue-list-card" data-issue-search="'+esc(search)+'" data-issue-status="'+esc(t.status)+'" data-issue-complete="'+(t.is_completed?'1':'0')+'">'+
+         '<div class="issue-card-top"><div><strong>PN-'+String(t.ticket_number).padStart(6,'0')+'｜'+esc(main)+'</strong>'+
+         '<div class="muted">'+esc(displayDate(t.case_date||t.created_at))+'｜'+esc(t.issue_type||'未分類')+
+         '｜次要人：'+esc(t.secondary_person||'—')+'</div></div>'+
+         '<div class="issue-badge '+(t.is_completed?'is-done':'')+'">'+esc(label)+'</div></div>'+
+         '<div class="issue-description">'+esc(t.description||t.subject)+'</div>'+
+         (t.internal_notes?'<div class="issue-note">備註：'+esc(t.internal_notes)+'</div>':'')+
+         '<div class="issue-card-bottom"><span class="muted">'+(t.product_code?'貨號 '+esc(t.product_code)+'｜':'')+
+         (t.order_reference?'訂單 '+esc(t.order_reference):'')+'</span>'+
+         '<button type="button" class="btn secondary" data-issue-edit="'+esc(t.id)+'">查看／修改</button></div></article>';
+     }).join('')||'<div class="catalog-empty">目前沒有問題單，請點「＋新增問題單」。</div>')+
+     '</div><div id="issueFilterCount" class="muted"></div>';
+   function filter(){
+     var q=($('issueSearch').value||'').toLowerCase().trim(),status=$('issueStatusFilter').value,
+         complete=$('issueCompleteFilter').value,n=0;
+     root.querySelectorAll('.issue-list-card').forEach(function(el){
+       var show=(!q||el.dataset.issueSearch.includes(q))&&(!status||el.dataset.issueStatus===status)&&
+         (complete==='all'||(complete==='done'?el.dataset.issueComplete==='1':el.dataset.issueComplete!=='1'));
+       el.hidden=!show;if(show)n++;
+     });
+     $('issueFilterCount').textContent='符合條件 '+n+' 筆';
+   }
+   ['issueSearch','issueStatusFilter','issueCompleteFilter'].forEach(function(id){
+     $(id).addEventListener(id==='issueSearch'?'input':'change',filter);
+   });
+   $('issueAdd').onclick=function(){openIssueEditor(null,customers,container).catch(toastError);};
+   $('issueReload').onclick=function(){render('admin',container);};
+   root.querySelectorAll('[data-issue-edit]').forEach(function(b){b.onclick=function(){
+     var ticket=tickets.find(function(t){return t.id===b.dataset.issueEdit;});
+     if(ticket)openIssueEditor(ticket,customers,container).catch(toastError);
+   };});
+   filter();
+ }catch(e){root.innerHTML='<div class="message error">讀取待處理問題單失敗：'+esc(e.message)+'</div>';}
 }
-async function openThread(mode,id){
- var el=$('ngThread-'+id);if(!el)return;if(el.dataset.open==='1'){el.innerHTML='';el.dataset.open='';return;}el.dataset.open='1';
- el.innerHTML='<p class="muted">載入留言與附件…</p>';
- try{
-  var out=await Promise.all([api('ng_messages?select=*&ticket_id=eq.'+id+'&order=created_at.asc'),api('ng_photos?select=*&ticket_id=eq.'+id+'&order=created_at.asc'),api('ng_tickets?select=*&id=eq.'+id)]);
-  var msgs=out[0],photos=out[1],ticket=out[2][0];
-  var pictureMap={};await Promise.all(photos.map(async function(p){pictureMap[p.id]=await signedPhoto(p.storage_path);}));
-  function imgs(messageId){return photos.filter(function(p){return p.message_id===messageId;}).map(function(p){var url=pictureMap[p.id];return url?(String(p.mime_type||'').indexOf('video/')===0?'<video controls preload="metadata" playsinline src="'+esc(url)+'" style="width:220px;max-width:100%;border-radius:8px;margin:4px"></video>':'<a href="'+esc(url)+'" target="_blank" rel="noopener"><img src="'+esc(url)+'" alt="'+esc(p.filename)+'" style="height:90px;max-width:130px;object-fit:cover;border-radius:8px;margin:4px"></a>'):'';}).join('');}
-  el.innerHTML='<div class="catalog-block"><b>問題照片／影片</b><div>'+imgs(null)+'</div>'+
-   msgs.map(function(m){return '<div style="border-top:1px solid #ddd;padding:10px 0"><div class="muted">'+esc(time(m.created_at))+'｜'+(m.author_id===ticket.created_by?'客戶':'處理人員')+'</div><div style="white-space:pre-wrap">'+esc(m.body)+'</div>'+imgs(m.id)+'</div>';}).join('')+
-   (ticket.status==='closed'?'<p>此問題單已結案。</p>':'<div><label>新增留言／處理進度<textarea id="ngReply-'+id+'" rows="3" style="width:100%"></textarea></label><label>附加照片／影片（影片 30 秒內）<input type="file" id="ngReplyFiles-'+id+'" accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime,video/webm" multiple></label><button class="btn primary" data-ng-send>送出回覆</button></div>')+
-   (mode==='admin'?'<label>處理狀態<select id="ngStatus-'+id+'">'+['new','processing','waiting_customer','resolved','closed'].map(function(s){return '<option value="'+s+'" '+(ticket.status===s?'selected':'')+'>'+badge(s)+'</option>';}).join('')+'</select></label><button class="btn secondary" data-ng-status>更新狀態</button>':'')+'</div>';
-  var send=el.querySelector('[data-ng-send]');if(send)send.onclick=async function(){
-   var body=$('ngReply-'+id).value.trim(),files=Array.from($('ngReplyFiles-'+id).files||[]);
-   if(!body){alert('請先輸入留言');return;}send.disabled=true;
-   try{var checked=[];for(var f of files)checked.push(await validateMedia(f));var rows=await api('ng_messages',{method:'POST',headers:{'Content-Type':'application/json',Prefer:'return=representation'},body:JSON.stringify({ticket_id:id,body})});
-    for(var j=0;j<files.length;j++)await upload(id,rows[0].id,files[j],checked[j]);
-    el.dataset.open='';await openThread(mode,id);
-   }catch(e){alert(e.message);send.disabled=false;}
-  };
-  var status=el.querySelector('[data-ng-status]');if(status)status.onclick=async function(){
-   try{await api('ng_tickets?id=eq.'+id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:$('ngStatus-'+id).value,updated_at:new Date().toISOString()})});await render(mode,mode==='admin'?'catAdminNg':'catalogCustomerArea');}catch(e){alert(e.message);}
-  };
- }catch(e){el.textContent='載入失敗：'+e.message;}
+async function openIssueEditor(current,customers,container){
+ var existing=$('issueEditor');if(existing)existing.remove();
+ var attachments=[],messages=[];
+ if(current){
+   var all=await Promise.all([
+     api('ng_photos?select=*&ticket_id=eq.'+encodeURIComponent(current.id)+'&deleted_at=is.null&order=created_at.asc'),
+     api('ng_messages?select=*&ticket_id=eq.'+encodeURIComponent(current.id)+'&order=created_at.asc')
+   ]);
+   attachments=all[0]||[];messages=all[1]||[];
+ }
+ var files=[],busy=false,currentTicket=current||null;
+ var overlay=document.createElement('div');overlay.id='issueEditor';overlay.className='catalog-modal';
+ overlay.innerHTML='<div class="catalog-modal-card issue-modal-card">'+
+   '<div class="catalog-modal-head"><div><h2 id="issueModalTitle">'+(current?'修改待處理問題單 PN-'+String(current.ticket_number).padStart(6,'0'):'新增待處理問題單')+'</h2>'+
+   '<p class="muted">本表單僅管理者及員工可使用；照片／影片可拖曳或貼上，儲存後上傳。</p></div>'+
+   '<button class="catalog-close" id="issueClose" type="button" aria-label="關閉">×</button></div>'+
+   '<div class="issue-form-grid">'+
+   '<label>登記日期<input id="issueCaseDate" type="date" value="'+esc(current&&current.case_date||today())+'"></label>'+
+   '<label>目前案件狀態<select id="issueStatus">'+issueStatuses.map(function(x){return '<option value="'+x[0]+'" '+((current&&current.status||'new')===x[0]?'selected':'')+'>'+x[1]+'</option>';}).join('')+'</select></label>'+
+   '<label>主要人 <span class="muted">（客戶／聯絡窗口）</span><input id="issuePrimary" maxlength="150" value="'+esc(current&&current.primary_person||'')+'" placeholder="例如 治品-台南倉"></label>'+
+   '<label>次要人 <span class="muted">（協辦／供應商）</span><input id="issueSecondary" maxlength="150" value="'+esc(current&&current.secondary_person||'')+'" placeholder="例如 宜羿、360、SC"></label>'+
+   '<label>問題類型<input id="issueType" list="issueTypeSuggestions" maxlength="100" value="'+esc(current&&current.issue_type||'NG回報')+'" placeholder="NG回報、訂單貨況、缺貨回報"><datalist id="issueTypeSuggestions">'+issueCategories.map(function(x){return '<option value="'+esc(x)+'"></option>';}).join('')+'</datalist></label>'+
+   '<label>關聯客戶 <span class="muted">（選填）</span><select id="issueCustomer"><option value="">不綁定客戶主檔</option>'+
+   customers.map(function(c){return '<option value="'+esc(c.id)+'" '+((current&&current.customer_id)===c.id?'selected':'')+'>'+esc(c.customer_code+' '+c.name)+'</option>';}).join('')+'</select></label>'+
+   '<label>商品貨號 <span class="muted">（選填）</span><input id="issueProduct" maxlength="120" value="'+esc(current&&current.product_code||'')+'"></label>'+
+   '<label>訂單／採購單編號 <span class="muted">（選填）</span><input id="issueOrder" maxlength="150" value="'+esc(current&&current.order_reference||'')+'"></label>'+
+   '<label class="span2">問題主旨／摘要<input id="issueSubject" maxlength="180" value="'+esc(current&&current.subject||'')+'" placeholder="簡述要追蹤的事項"></label>'+
+   '<label class="span2">問題內容<textarea id="issueDesc" rows="5" maxlength="10000" placeholder="問題內容、商品名稱、數量或缺貨情況">'+esc(current&&current.description||'')+'</textarea></label>'+
+   '<label class="span2">備註／處理說明<textarea id="issueNotes" rows="4" maxlength="10000" placeholder="廠商回覆、預計處理方式、補寄或扣款情況">'+esc(current&&current.internal_notes||'')+'</textarea></label>'+
+   '<label class="issue-finish-check"><input type="checkbox" id="issueCompleted" '+(current&&current.is_completed?'checked':'')+'> 此案件已完成</label>'+
+   '</div>'+
+   '<div class="catalog-block"><h3>照片／影片附件</h3>'+
+   '<input id="issuePickFiles" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime,video/webm" multiple hidden>'+
+   '<div class="issue-dropzone" id="issueDrop" tabindex="0" role="button">'+
+   '<strong>將照片或影片拖曳到這裡</strong><span>可拖入多檔，或在視窗貼上複製的圖片（Ctrl+V）</span>'+
+   '<button type="button" class="btn secondary" id="issueChooseFiles">選擇照片／影片</button></div>'+
+   '<p class="muted">圖片 JPG／PNG／WEBP，每張 10MB 內；影片 MP4／MOV／WebM，每段 30 秒內且 50MB 以下。若 LINE 無法直接拖入，請先存檔或複製圖片再貼上。</p>'+
+   '<div id="issuePending" class="issue-media-grid"></div>'+
+   '<div id="issueCurrentMedia" class="issue-media-grid"></div></div>'+
+   (current?'<div class="catalog-block"><h3>歷史處理進度</h3><div id="issueHistory">'+
+      (messages.map(function(m){return '<div class="issue-history-item"><span class="muted">'+esc(time(m.created_at))+'</span><div>'+esc(m.body||'')+'</div></div>';}).join('')||'<p class="muted">尚無處理進度。</p>')+
+      '</div><label>新增處理紀錄<textarea id="issueProgress" rows="3" placeholder="選填，儲存時一併記錄" style="width:100%"></textarea></label></div>':'')+
+   '<div id="issueEditorMsg" class="message" role="status"></div>'+
+   '<div class="issue-actions"><button type="button" id="issueCancel" class="btn ghost">取消</button>'+
+   '<button type="button" id="issueSave" class="btn primary">儲存問題單</button></div></div>';
+ document.body.appendChild(overlay);
+ var picker=$('issuePickFiles'),drop=$('issueDrop'),queue=$('issuePending'),saved=$('issueCurrentMedia'),notice=$('issueEditorMsg');
+ function release(){files.forEach(function(x){URL.revokeObjectURL(x.url);});files=[];}
+ function close(){if(busy)return;document.removeEventListener('paste',paste);release();overlay.remove();}
+ $('issueClose').onclick=close;$('issueCancel').onclick=close;
+ function refreshPending(){
+   queue.innerHTML=files.map(function(x,i){
+     return '<div class="issue-media-item">'+(x.file.type.indexOf('video/')===0?
+       '<video controls playsinline preload="metadata" src="'+esc(x.url)+'"></video>':
+       '<img alt="'+esc(x.file.name)+'" src="'+esc(x.url)+'">')+
+       '<div title="'+esc(x.file.name)+'" class="issue-media-name">'+esc(x.file.name)+'</div>'+
+       '<button class="btn ghost" type="button" data-issue-remove="'+i+'">移除</button></div>';
+   }).join('');
+   queue.querySelectorAll('[data-issue-remove]').forEach(function(b){b.onclick=function(){
+     var item=files.splice(Number(b.dataset.issueRemove),1)[0];
+     if(item)URL.revokeObjectURL(item.url);refreshPending();
+   };});
+ }
+ function addFiles(list){
+   var errs=[],added=0;
+   Array.from(list||[]).forEach(function(file){
+     if(!file)return;
+     if(!/^(image\/(jpeg|png|webp)|video\/(mp4|quicktime|webm))$/.test(file.type)){
+       errs.push(file.name+': 不支援此格式');return;
+     }
+     if(file.size>(file.type.indexOf('video/')===0?50:10)*1024*1024){
+       errs.push(file.name+': 檔案超過容量上限');return;
+     }
+     if(files.length>=30){errs.push('一次最多選 30 個檔案');return;}
+     if(files.some(function(x){return x.file.name===file.name&&x.file.size===file.size&&x.file.lastModified===file.lastModified;}))return;
+     files.push({file:file,url:URL.createObjectURL(file)});added++;
+   });
+   refreshPending();
+   notice.className=errs.length?'message error':'message';
+   notice.textContent=(added?'已加入 '+added+' 個待上傳檔案。':'')+(errs.length?errs.join('；'):'');
+ }
+ picker.onchange=function(){addFiles(picker.files);picker.value='';};
+ $('issueChooseFiles').onclick=function(e){e.stopPropagation();picker.click();};
+ drop.onclick=function(e){if(!e.target.closest('button'))picker.click();};
+ drop.onkeydown=function(e){if(e.target===drop&&(e.key==='Enter'||e.key===' ')){e.preventDefault();picker.click();}};
+ drop.ondragover=function(e){e.preventDefault();e.dataTransfer.dropEffect='copy';drop.classList.add('dragging');};
+ drop.ondragleave=function(e){if(!drop.contains(e.relatedTarget))drop.classList.remove('dragging');};
+ drop.ondrop=function(e){e.preventDefault();drop.classList.remove('dragging');var fs=Array.from(e.dataTransfer.files||[]);if(fs.length)addFiles(fs);else{notice.className='message error';notice.textContent='來源未提供可讀取的圖片／影片檔案。請先下載到電腦，或在 LINE 複製圖片再貼上。';}};
+ function paste(e){
+   if(!overlay.isConnected||!e.clipboardData)return;
+   var media=Array.from(e.clipboardData.files||[]).filter(function(f){return /^image\//.test(f.type)||/^video\//.test(f.type);});
+   if(!media.length)return;
+   e.preventDefault();
+   media=media.map(function(f){
+     if(f.name&&/\.(png|jpe?g|webp|mp4|mov|webm)$/i.test(f.name))return f;
+     var ext=f.type==='image/png'?'png':f.type==='image/webp'?'webp':'jpg';
+     return new File([f],'LINE_貼上_'+Date.now()+'.'+ext,{type:f.type});
+   });
+   addFiles(media);
+ }
+ document.addEventListener('paste',paste);
+ async function drawExisting(){
+   if(!attachments.length){saved.innerHTML=currentTicket?'<p class="muted">尚未上傳附件。</p>':'';return;}
+   saved.innerHTML='<p class="muted">正在載入已儲存附件…</p>';
+   var html=await Promise.all(attachments.map(async function(p){
+     var url=await signedPhoto(p.storage_path);
+     return '<div class="issue-media-item">'+
+       (url?(String(p.mime_type||'').indexOf('video/')===0?
+         '<video controls playsinline preload="metadata" src="'+esc(url)+'"></video>':
+         '<a target="_blank" rel="noopener noreferrer" href="'+esc(url)+'"><img src="'+esc(url)+'" alt="'+esc(p.filename)+'"></a>'):
+         '<div class="catalog-empty">附件暫時無法預覽</div>')+
+       '<div class="issue-media-name" title="'+esc(p.filename)+'">'+esc(p.filename)+'</div>'+
+       '<button type="button" class="btn ghost" data-issue-hide-media="'+esc(p.id)+'">移除附件</button></div>';
+   }));
+   saved.innerHTML=html.join('');
+   saved.querySelectorAll('[data-issue-hide-media]').forEach(function(b){b.onclick=async function(){
+     if(!confirm('從此問題單隱藏附件？原始檔案保留，以免影響歷史紀錄。'))return;
+     b.disabled=true;
+     try{
+       await api('ng_photos?id=eq.'+encodeURIComponent(b.dataset.issueHideMedia),
+         {method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify({deleted_at:new Date().toISOString()})});
+       attachments=attachments.filter(function(x){return x.id!==b.dataset.issueHideMedia;});
+       drawExisting();
+     }catch(err){alert('移除附件失敗：'+err.message);b.disabled=false;}
+   };});
+ }
+ drawExisting().catch(function(e){saved.textContent='附件讀取失敗：'+e.message;});
+ $('issueSave').onclick=async function(){
+   if(busy)return;
+   var primary=$('issuePrimary').value.trim(),description=$('issueDesc').value.trim(),
+       issueType=$('issueType').value.trim(),date=$('issueCaseDate').value;
+   if(!primary||!description||!issueType||!date){
+     notice.className='message error';notice.textContent='請填寫登記日期、主要人、問題類型及問題內容。';return;
+   }
+   var completed=$('issueCompleted').checked;
+   var values={
+     case_date:date,status:$('issueStatus').value,primary_person:primary,
+     secondary_person:$('issueSecondary').value.trim()||null,
+     issue_type:issueType,customer_id:$('issueCustomer').value||null,
+     product_code:$('issueProduct').value.trim()||null,
+     order_reference:$('issueOrder').value.trim()||null,
+     subject:$('issueSubject').value.trim()||description.slice(0,80),
+     description:description,internal_notes:$('issueNotes').value.trim()||null,
+     is_completed:completed,completed_at:completed?(currentTicket&&currentTicket.completed_at||new Date().toISOString()):null,
+     updated_at:new Date().toISOString()
+   };
+   busy=true;$('issueSave').disabled=true;$('issueCancel').disabled=true;
+   notice.textContent='正在儲存問題單與附件…';notice.className='message';
+   var errors=[];
+   try{
+     // Validate all files before changing the issue record.
+     var validated=[];
+     for(var o of files)validated.push(await validateMedia(o.file));
+     if(currentTicket){
+       await api('ng_tickets?id=eq.'+encodeURIComponent(currentTicket.id),
+         {method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify(values)});
+     }else{
+       var inserted=await api('ng_tickets',{method:'POST',
+          headers:{Prefer:'return=representation'},body:JSON.stringify(values)});
+       currentTicket=inserted[0];
+       $('issueModalTitle').textContent='修改待處理問題單 PN-'+String(currentTicket.ticket_number).padStart(6,'0');
+     }
+     for(var i=0;i<files.length;){
+       var media=files[i];
+       try{
+         await upload(currentTicket.id,null,media.file,validated[i]);
+         URL.revokeObjectURL(media.url);
+         files.splice(i,1);validated.splice(i,1);
+       }catch(err){errors.push(media.file.name+'：'+err.message);i++;}
+     }
+     var progress=$('issueProgress')&&$('issueProgress').value.trim();
+     if(progress){
+       await api('ng_messages',{method:'POST',
+         body:JSON.stringify({ticket_id:currentTicket.id,body:progress})});
+       $('issueProgress').value='';
+     }
+     await render('admin',container);
+     if(!errors.length){closeAfterSave();return;}
+     refreshPending();
+     notice.className='message error';
+     notice.textContent='問題單已儲存，但以下附件上傳失敗，可再按儲存重試：'+errors.join('；');
+   }catch(err){
+     notice.className='message error';notice.textContent='儲存失敗：'+err.message;
+   }finally{
+     busy=false;$('issueSave').disabled=false;$('issueCancel').disabled=false;
+   }
+ };
+ function closeAfterSave(){document.removeEventListener('paste',paste);release();overlay.remove();}
 }
 window.NGTickets={render:render};
 })();
