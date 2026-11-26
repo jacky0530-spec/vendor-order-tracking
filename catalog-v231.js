@@ -128,6 +128,7 @@ var previewData={members:[],prices:[],levelPrices:[],access:[]};
 async function renderAdminCustomerPreview(){
   if(!isManager())return;
   var el=$('catAdminPreview');if(!el)return;
+  var previousSelected=$('catPreviewCustomer')?$('catPreviewCustomer').value:null;
   el.innerHTML='<div class="catalog-empty">正在載入客戶視角…</div>';
   var results=await Promise.all([
     rest('customer_level_members?select=customer_id,level_id'),
@@ -136,8 +137,75 @@ async function renderAdminCustomerPreview(){
     rest('catalog_customer_access?select=product_id,customer_id,level_id')
   ]);
   previewData={members:results[0]||[],prices:results[1]||[],levelPrices:results[2]||[],access:results[3]||[]};
-  el.innerHTML='<div class="catalog-block"><h3>客戶視角預覽（唯讀）</h3><p class="muted">選擇客戶，模擬該客戶可見的已上架商品及專屬價格。預覽不會建立購物車或訂單。</p><div class="catalog-toolbar"><select id="catPreviewCustomer" aria-label="選擇預覽客戶">'+state.customers.filter(function(x){return x.active;}).map(function(x){return '<option value="'+esc(x.id)+'">'+esc(x.customer_code+' '+x.name)+'</option>';}).join('')+'</select><input id="catPreviewSearch" placeholder="搜尋商品編號或名稱"><select id="catPreviewMode"><option value="">全部商品</option><option value="in_stock">現貨</option><option value="preorder">預購</option></select></div><div id="catPreviewSummary" class="muted"></div><div id="catPreviewGrid" class="catalog-grid"></div></div>';
-  $('catPreviewCustomer').onchange=paintAdminCustomerPreview;
+  var customers=state.customers.filter(function(c){return c.active;});
+  var selected=customers.find(function(c){return c.id===previousSelected;})||customers[0]||null;
+  function displayCustomer(c){return c.customer_code+' '+c.name;}
+  function normalizeCustomer(v){return String(v||'').toLocaleLowerCase('zh-Hant').replace(/[\s　]+/g,'');}
+  el.innerHTML='<div class="catalog-block"><h3>客戶視角預覽（唯讀）</h3>'+
+    '<p class="muted">輸入客戶編號、名稱或簡稱查詢，選取後預覽該客戶可見的已上架商品及專屬價格。預覽不會建立購物車或訂單。</p>'+
+    '<div class="catalog-toolbar">'+
+      '<div class="cat-preview-customer-picker" id="catPreviewCustomerPicker">'+
+        '<input type="search" id="catPreviewCustomerQuery" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="catPreviewCustomerMatches" aria-label="搜尋預覽客戶編號、名稱或簡稱" placeholder="搜尋客戶編號／姓名／簡稱" autocomplete="off" value="'+esc(selected?displayCustomer(selected):'')+'">'+
+        '<input type="hidden" id="catPreviewCustomer" value="'+esc(selected?selected.id:'')+'">'+
+        '<div id="catPreviewCustomerMatches" class="cat-preview-customer-results" role="listbox" hidden></div>'+
+      '</div>'+
+      '<input id="catPreviewSearch" placeholder="搜尋商品編號或名稱">'+
+      '<select id="catPreviewMode"><option value="">全部商品</option><option value="in_stock">現貨</option><option value="preorder">預購</option></select>'+
+    '</div><div id="catPreviewSummary" class="muted"></div><div id="catPreviewGrid" class="catalog-grid"></div></div>';
+  var picker=$('catPreviewCustomerPicker'),input=$('catPreviewCustomerQuery'),list=$('catPreviewCustomerMatches');
+  var matches=[];
+  function closeMatches(){
+    list.hidden=true;
+    input.setAttribute('aria-expanded','false');
+  }
+  function chooseCustomer(id){
+    var c=customers.find(function(x){return x.id===id;});if(!c)return;
+    $('catPreviewCustomer').value=c.id;
+    input.value=displayCustomer(c);
+    closeMatches();
+    paintAdminCustomerPreview();
+  }
+  function showMatches(){
+    var q=normalizeCustomer(input.value);
+    matches=customers.filter(function(c){
+      return !q||normalizeCustomer([c.customer_code,c.name,c.import_short_name,c.contact_name,c.phone].join(' ')).includes(q);
+    });
+    var shown=matches.slice(0,45);
+    list.innerHTML=shown.map(function(c){
+      return '<button type="button" class="cat-preview-customer-option" role="option" aria-selected="'+(c.id===$('catPreviewCustomer').value?'true':'false')+'" data-preview-customer-id="'+esc(c.id)+'">'+
+        '<strong>'+esc(c.customer_code)+'｜'+esc(c.name)+'</strong>'+
+        (c.import_short_name||c.contact_name?'<span>'+esc(c.import_short_name||c.contact_name)+'</span>':'')+
+        '</button>';
+    }).join('')||'<div class="cat-preview-customer-hint">找不到符合的客戶，請更換關鍵字。</div>';
+    if(matches.length>shown.length)list.insertAdjacentHTML('beforeend','<div class="cat-preview-customer-hint">找到 '+matches.length+' 位客戶，請輸入更多關鍵字縮小範圍。</div>');
+    list.hidden=false;
+    input.setAttribute('aria-expanded','true');
+    list.querySelectorAll('[data-preview-customer-id]').forEach(function(b){
+      b.onclick=function(){chooseCustomer(b.dataset.previewCustomerId);};
+    });
+  }
+  input.onfocus=function(){input.select();showMatches();};
+  input.oninput=showMatches;
+  input.onkeydown=function(e){
+    if(e.key==='ArrowDown'){
+      var first=list.querySelector('[data-preview-customer-id]');
+      if(first){e.preventDefault();first.focus();}
+    }else if(e.key==='Enter'){
+      if(!list.hidden&&matches.length){e.preventDefault();chooseCustomer(matches[0].id);}
+    }else if(e.key==='Escape'){
+      closeMatches();
+      var current=customers.find(function(c){return c.id===$('catPreviewCustomer').value;});
+      input.value=current?displayCustomer(current):'';
+    }
+  };
+  list.onkeydown=function(e){
+    var buttons=[].slice.call(list.querySelectorAll('[data-preview-customer-id]'));
+    var i=buttons.indexOf(document.activeElement);
+    if(e.key==='ArrowDown'&&i>=0){e.preventDefault();buttons[Math.min(i+1,buttons.length-1)].focus();}
+    else if(e.key==='ArrowUp'&&i>=0){e.preventDefault();if(i===0)input.focus();else buttons[i-1].focus();}
+    else if(e.key==='Escape'){e.preventDefault();closeMatches();input.focus();}
+  };
+  picker.addEventListener('focusout',function(e){if(!picker.contains(e.relatedTarget))closeMatches();});
   $('catPreviewSearch').oninput=paintAdminCustomerPreview;
   $('catPreviewMode').onchange=paintAdminCustomerPreview;
   paintAdminCustomerPreview();
