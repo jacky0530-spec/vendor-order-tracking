@@ -362,3 +362,12 @@ header.topbar #catalogCustomerNav button.active{background:#0f766e;border-color:
   font-size:11px;
   font-weight:400;
 }
+
+/* V2.88: quick publish/unpublish directly from product cards */
+.cat-quick-publish-row{margin-top:12px}
+.cat-quick-publish-row .btn{width:100%;min-height:42px;font-weight:800}
+.cat-quick-publish-row .cat-publish-on{background:#087f72;color:white;border-color:#087f72}
+.cat-quick-publish-row .cat-publish-on:hover{background:#076a5f;border-color:#076a5f}
+.cat-quick-publish-row .cat-publish-off{border:1px solid #b42318;color:#b42318;background:white}
+.cat-quick-publish-row .cat-publish-off:hover{background:#fff1f1}
+.cat-quick-publish-row .btn:disabled{opacity:.55;cursor:wait}
