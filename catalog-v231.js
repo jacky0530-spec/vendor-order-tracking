@@ -1372,8 +1372,13 @@ async function openCustomerPurchaseEditor(requestId){
   var holder=$('catPurchaseEditRows'),status=$('catPurchaseEditMessage'),saving=false;
   function productOf(l){return products.find(function(p){return p.id===l.product_id;});}
   function lineVariants(l){
-    return variants.filter(function(v){return v.product_id===l.product_id&&
+    var options=variants.filter(function(v){return v.product_id===l.product_id&&
       (v.active&&v.sale_status==='available'||l.id&&v.id===l.original_variant_id);});
+    if(l.id&&l.original_variant_id&&!options.some(function(v){return v.id===l.original_variant_id;})){
+      options.unshift({id:l.original_variant_id,product_id:l.product_id,
+        name:l.variant_name||'原訂購規格',sale_status:'discontinued',active:false,price_delta:0});
+    }
+    return options;
   }
   function estimate(l){
     var prod=productOf(l),v=variants.find(function(x){return x.id===l.variant_id;});
@@ -1383,7 +1388,8 @@ async function openCustomerPurchaseEditor(requestId){
   function renderRows(){
     holder.innerHTML=rows.map(function(l,i){
       var prod=productOf(l),options=lineVariants(l),hasVariants=options.some(function(v){return v.active&&v.sale_status==='available';});
-      var productsOptions=l.id?'<strong>'+esc(l.name)+'</strong>':
+      var productsOptions=l.id?'<strong>'+esc(l.name)+'</strong>'+
+        (!prod?'<div class="muted">此商品目前未上架，僅能減少原有數量或移除。</div>':''):
         '<label>商品<select data-pedit-field="product_id" data-pedit-index="'+i+'">'+
         products.map(function(p){return '<option value="'+esc(p.id)+'" '+(p.id===l.product_id?'selected':'')+'>'+
           esc(p.product_code+' '+p.name)+'</option>';}).join('')+'</select></label>';
