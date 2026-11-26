@@ -802,6 +802,74 @@ function ensureProductModal(){
   d.innerHTML='<div class="catalog-modal-card"><div class="catalog-modal-head"><div><h2 id="catProductTitle">新增商品</h2><div class="muted">員工/管理員可刊登；圖片保留原始檔供廠商下載。</div></div><button class="catalog-close" data-cat-close>×</button></div><div id="catProductBody"></div><div id="catProductMsg" class="message"></div><div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px"><button class="btn ghost" data-cat-close>取消</button><button id="catSaveProduct" class="btn primary">儲存商品</button></div></div>';
   document.body.appendChild(d);d.querySelectorAll('[data-cat-close]').forEach(function(x){x.addEventListener('click',function(){if($('catSaveProduct').disabled)return;resetPendingProductImages();d.classList.add('hidden');});});$('catSaveProduct').addEventListener('click',saveProduct);document.addEventListener('paste',handleProductImagePaste);
 }
+
+// V2.87: Make product-editor amounts replaceable with one tap, including iPad Safari.
+// Keep numeric validation explicit because inputmode alone does not validate text fields.
+function normalizeProductNumberText(value){
+  var raw=String(value==null?'':value).trim()
+    .replace(/[０-９]/g,function(c){return String(c.charCodeAt(0)-65296);})
+    .replace(/[．。]/g,'.').replace(/[－−]/g,'-').replace(/，/g,',');
+  if(/^[+-]?\d{1,3}(,\d{3})+(?:\.\d+)?$/.test(raw))raw=raw.replace(/,/g,'');
+  return raw;
+}
+function validateProductNumericInput(input){
+  var raw=normalizeProductNumberText(input.value);
+  if(raw==='')return null; // Empty tier prices, limits and minimum overrides retain their existing meaning.
+  var label=(input.closest('label')?.firstChild?.textContent||input.getAttribute('aria-label')||'數字欄位').trim();
+  if(!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(raw))
+    throw new Error('「'+label+'」請輸入有效數字，例如 60 或 24.5');
+  var number=Number(raw),min=input.dataset.catNumericMin,max=input.dataset.catNumericMax;
+  if(!Number.isFinite(number))throw new Error('「'+label+'」數值無效');
+  if(min!==undefined&&min!==''&&number<Number(min))
+    throw new Error('「'+label+'」不可小於 '+min);
+  if(max!==undefined&&max!==''&&number>Number(max))
+    throw new Error('「'+label+'」不可大於 '+max);
+  if(input.dataset.catNumericStep==='0.01'&&
+     Math.abs(number*100-Math.round(number*100))>1e-7)
+    throw new Error('「'+label+'」最多可輸入小數兩位');
+  return {raw:raw,number:number};
+}
+function setupProductNumericInputs(scope){
+  if(!scope)return;
+  scope.querySelectorAll('input[type="number"],input[data-cat-numeric="1"]').forEach(function(input){
+    if(input.dataset.catNumeric==='1')return;
+    input.dataset.catNumeric='1';
+    input.dataset.catNumericMin=input.getAttribute('min')||'';
+    input.dataset.catNumericMax=input.getAttribute('max')||'';
+    input.dataset.catNumericStep=input.getAttribute('step')||'any';
+    // type=text supports select() on desktop and Safari; inputmode opens the mobile decimal pad.
+    input.type='text';input.inputMode='decimal';input.autocomplete='off';
+    input.spellcheck=false;input.enterKeyHint='done';
+    input.classList.add('cat-direct-numeric');
+    var firstPointer=false;
+    input.addEventListener('focus',function(){
+      firstPointer=true;input.select();
+    });
+    input.addEventListener('pointerup',function(e){
+      if(firstPointer){e.preventDefault();input.select();firstPointer=false;}
+    });
+    input.addEventListener('keydown',function(){firstPointer=false;});
+    input.addEventListener('blur',function(){
+      firstPointer=false;
+      try{
+        var parsed=validateProductNumericInput(input);
+        if(parsed!==null)input.value=parsed.raw;
+        input.removeAttribute('aria-invalid');input.removeAttribute('title');
+      }catch(err){input.setAttribute('aria-invalid','true');input.title=err.message;}
+    });
+    input.addEventListener('input',function(){input.removeAttribute('aria-invalid');input.removeAttribute('title');});
+  });
+}
+function validateProductNumericInputs(scope){
+  if(!scope)return;
+  scope.querySelectorAll('input[data-cat-numeric="1"]').forEach(function(input){
+    try{
+      var parsed=validateProductNumericInput(input);
+      if(parsed!==null)input.value=parsed.raw;
+      input.removeAttribute('aria-invalid');
+    }catch(err){input.setAttribute('aria-invalid','true');input.focus();throw err;}
+  });
+}
 async function openProductEditor(id){
   ensureProductModal();state.currentProduct=id?state.products.find(function(x){return x.id===id;}):null;
   var p=state.currentProduct||{sale_mode:'preorder',base_price:0,min_order_qty:1,order_unit:'件',visibility_mode:'all',published:false,active:true};
@@ -818,7 +886,7 @@ async function openProductEditor(id){
     '<label>出貨方<select id="catPFulfill">'+state.vendors.filter(function(v){return v.active;}).map(function(v){return '<option value="'+v.id+'" '+((p.fulfillment_vendor_id||(!id?'ba4326fc-b7a4-4b87-a16c-316c0f121eec':null))===v.id?'selected':'')+'>'+esc(v.vendor_code+' '+v.name)+'</option>';}).join('')+'</select></label>'+
     '<label>商品專區<select id="catPClearance"><option value="normal" '+(!p.is_clearance?'selected':'')+'>一般商品</option><option value="clearance" '+(p.is_clearance?'selected':'')+'>出清優惠專區</option></select></label>'+ 
     '<label>販售模式<select id="catPMode"><option value="preorder" '+(p.sale_mode==='preorder'?'selected':'')+'>預購</option><option value="in_stock" '+(p.sale_mode==='in_stock'?'selected':'')+'>現貨</option></select></label>'+
-    '<label>一般批發價<input id="catPBase" type="number" min="0" step="0.01" value="'+esc(p.base_price||0)+'"></label>'+
+    '<label>一般批發價 <span class="muted cat-number-hint">（點一下直接覆蓋）</span><input id="catPBase" type="number" min="0" step="0.01" value="'+esc(p.base_price||0)+'"></label>'+
     '<label>銷售總量上限（空白＝不限）<input id="catPMaxSales" type="number" min="1" step="any" value="'+esc(p.max_sales_quantity==null?'':p.max_sales_quantity)+'" placeholder="不限量"></label>'+ 
     '<label>最低訂購量<input id="catPMin" type="number" min="0.01" step="any" value="'+esc(p.min_order_qty||1)+'"></label>'+
     '<label>單位<input id="catPUnit" value="'+esc(p.order_unit||'件')+'"></label>'+
@@ -846,7 +914,7 @@ async function openProductEditor(id){
     '<div id="catPendingImageGrid" class="catalog-image-list cat-pending-image-grid"></div>'+
     '<p class="muted cat-image-hint">支援 JPG、PNG、WEBP、GIF；每張上限 20MB。拖入後先顯示預覽，按「儲存商品」才正式上傳。若 LINE 不允許直接拖出圖片，可在 LINE 複製圖片後貼上，或先儲存到電腦再拖入。</p>'+
     '<div id="catExistingImages" class="catalog-image-list">'+renderImageAdmin(id)+'</div></div>';
-  $('catAddVendorPrice').addEventListener('click',function(){$('catVendorPriceRows').insertAdjacentHTML('beforeend',vendorPriceRow(null));bindVendorPriceRemove();});
+  $('catAddVendorPrice').addEventListener('click',function(){$('catVendorPriceRows').insertAdjacentHTML('beforeend',vendorPriceRow(null));bindVendorPriceRemove();setupProductNumericInputs($('catVendorPriceRows'));});
   $('catGenerateVariants').onclick=function(){
     var notice=$('catDimensionMsg');
     try{
@@ -875,6 +943,7 @@ async function openProductEditor(id){
   };
   renderVariantRows();
   $('catAddVariant').onclick=function(){syncVariantRows();$('catPVariants').value+=($('catPVariants').value?'\n':'')+'｜新規格｜0｜1｜available';renderVariantRows();};
+  setupProductNumericInputs($('catProductBody'));
   bindVendorPriceRemove();bindImageAdmin();
   resetPendingProductImages();bindProductImageInput();
   $('catProductModal').classList.remove('hidden');
@@ -1048,6 +1117,7 @@ function renderVariantRows(){
  var box=$('catVariantRows');if(!box)return;
  var rows=parseVariants($('catPVariants').value);
  box.innerHTML=rows.map(catalogVariantRow).join('')||'<p class="muted">尚未建立規格，可點「＋新增規格」。</p>';
+ setupProductNumericInputs(box);
  box.querySelectorAll('input,select').forEach(function(x){x.onchange=syncVariantRows;x.oninput=function(){try{syncVariantRows();}catch(e){}};});
  box.querySelectorAll('[data-v-remove]').forEach(function(x){x.onclick=function(){
   var row=x.closest('.cat-variant-row'),name=row.querySelector('[data-vfield="name"]').value;
@@ -1108,6 +1178,7 @@ async function saveProduct(){
   var msg=$('catProductMsg'),save=$('catSaveProduct');save.disabled=true;save.textContent='儲存中…';msg.textContent='';
   try{
     if(state.currentProduct&&state.currentProduct.archived_at)throw new Error('此商品已刪除，請先從「已刪除」清單還原。');
+    validateProductNumericInputs($('catProductBody'));
     syncVariantRows();
     var payload={product_code:$('catPCode').value.trim(),name:$('catPName').value.trim(),description:$('catPDesc').value.trim()||null,fulfillment_vendor_id:$('catPFulfill').value,sale_mode:$('catPMode').value,is_clearance:$('catPClearance').value==='clearance',base_price:Number($('catPBase').value||0),min_order_qty:Number($('catPMin').value||1),max_sales_quantity:$('catPMaxSales').value.trim()===''?null:Number($('catPMaxSales').value),order_unit:$('catPUnit').value.trim()||'件',pack_text:$('catPPack').value.trim()||null,sale_start_at:$('catPStart').value?new Date($('catPStart').value).toISOString():null,sale_end_at:$('catPEnd').value?new Date($('catPEnd').value).toISOString():null,expected_ship_date:$('catPShip').value||null,visibility_mode:$('catPVisibility').value,published:$('catPPublished').checked,active:$('catPActive').checked,updated_at:new Date().toISOString()};
     if(payload.max_sales_quantity!==null&&(!Number.isFinite(payload.max_sales_quantity)||payload.max_sales_quantity<=0))throw new Error('銷售總量上限必須大於零');
