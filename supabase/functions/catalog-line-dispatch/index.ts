@@ -3,7 +3,7 @@
 // Never expose SUPABASE_SERVICE_ROLE_KEY or LINE_CHANNEL_ACCESS_TOKEN to browsers.
 const BASE=Deno.env.get('SUPABASE_URL')||'';
 const SERVICE=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')||'';
-const LINE_TOKEN=Deno.env.get('LINE_CHANNEL_ACCESS_TOKEN')||'';
+const LINE_TOKEN=Deno.env.get('LINE_CATALOG_CHANNEL_ACCESS_TOKEN')||'';
 const response=(body:unknown,status=200)=>new Response(JSON.stringify(body),{
   status,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'}
 });
@@ -105,7 +105,7 @@ Deno.serve(async(req:Request)=>{
       method:'POST',body:JSON.stringify({p_token:secret})
     });
     if(verified!==true)return response({ok:false,error:'unauthorized'},401);
-    if(!LINE_TOKEN)return response({ok:false,configured:false,error:'line_channel_access_token_missing'},503);
+    if(!LINE_TOKEN)return response({ok:true,configured:false,processed:0,message:'宜羿新品通知官方帳號尚未連接；未發送任何 LINE 訊息'});
     const due=await db('catalog_line_push_jobs?select=*&status=eq.pending&scheduled_at=lte.'+
       encodeURIComponent(new Date().toISOString())+'&order=scheduled_at.asc&limit=8');
     const results=[];
