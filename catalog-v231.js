@@ -799,7 +799,7 @@ function ensureProductModal(){
   if($('catProductModal'))return;
   var d=document.createElement('div');d.id='catProductModal';d.className='catalog-modal hidden';
   d.innerHTML='<div class="catalog-modal-card"><div class="catalog-modal-head"><div><h2 id="catProductTitle">新增商品</h2><div class="muted">員工/管理員可刊登；圖片保留原始檔供廠商下載。</div></div><button class="catalog-close" data-cat-close>×</button></div><div id="catProductBody"></div><div id="catProductMsg" class="message"></div><div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px"><button class="btn ghost" data-cat-close>取消</button><button id="catSaveProduct" class="btn primary">儲存商品</button></div></div>';
-  document.body.appendChild(d);d.querySelectorAll('[data-cat-close]').forEach(function(x){x.addEventListener('click',function(){if($('catSaveProduct').disabled)return;resetPendingProductImages();d.classList.add('hidden');});});$('catSaveProduct').addEventListener('click',saveProduct);
+  document.body.appendChild(d);d.querySelectorAll('[data-cat-close]').forEach(function(x){x.addEventListener('click',function(){if($('catSaveProduct').disabled)return;resetPendingProductImages();d.classList.add('hidden');});});$('catSaveProduct').addEventListener('click',saveProduct);document.addEventListener('paste',handleProductImagePaste);
 }
 async function openProductEditor(id){
   ensureProductModal();state.currentProduct=id?state.products.find(function(x){return x.id===id;}):null;
@@ -925,11 +925,18 @@ function addPendingProductImages(files,source){
   renderPendingProductImages(msg);
 }
 async function productImageFromDragHtml(dt){
-  var html='';try{html=dt.getData('text/html')||'';}catch(e){}
-  if(!html)return null;
-  var doc=new DOMParser().parseFromString(html,'text/html'),image=doc.querySelector('img[src]');
-  if(!image)return null;
-  var raw=image.getAttribute('src')||'';
+  var html='',raw='';
+  try{
+    html=dt.getData('text/html')||'';
+    var uriText=dt.getData('text/uri-list')||'';
+    var urls=uriText.split(/\r?\n/).map(function(x){return x.trim();}).filter(function(x){return x&&!x.startsWith('#');});
+    if(urls.length)raw=urls[0];
+  }catch(e){}
+  if(html){
+    var doc=new DOMParser().parseFromString(html,'text/html'),image=doc.querySelector('img[src]');
+    if(image)raw=image.getAttribute('src')||raw;
+  }
+  if(!raw)return null;
   if(raw.startsWith('//'))raw=location.protocol+raw;
   var url;try{url=new URL(raw,location.href);}catch(e){return null;}
   if(!['https:','http:','blob:','data:'].includes(url.protocol))
@@ -970,17 +977,17 @@ function bindProductImageInput(){
       else renderPendingProductImages('沒有取得圖片檔案。請在 LINE 複製圖片，再在這裡按 Ctrl+V；或先將圖片存到電腦。');
     }catch(err){renderPendingProductImages(err.message);}
   };
-  // The modal receives clipboard images even when another form field has focus.
-  modal.onpaste=function(e){
-    if(modal.classList.contains('hidden')||!e.clipboardData)return;
-    var files=Array.from(e.clipboardData.files||[]);
-    if(!files.length)files=Array.from(e.clipboardData.items||[]).filter(function(x){
-      return x.kind==='file'&&/^image\//.test(x.type);
-    }).map(function(x){return x.getAsFile();}).filter(Boolean);
-    if(!files.length)return;
-    e.preventDefault();
-    addPendingProductImages(files,'貼上');
-  };
+}
+function handleProductImagePaste(e){
+  var modal=$('catProductModal');
+  if(!modal||modal.classList.contains('hidden')||!e.clipboardData)return;
+  var files=Array.from(e.clipboardData.files||[]);
+  if(!files.length)files=Array.from(e.clipboardData.items||[]).filter(function(x){
+    return x.kind==='file'&&/^image\//.test(x.type);
+  }).map(function(x){return x.getAsFile();}).filter(Boolean);
+  if(!files.length)return;
+  e.preventDefault();
+  addPendingProductImages(files,'貼上');
 }
 function renderImageAdmin(id){
   if(!id)return '';return state.images.filter(function(x){return x.product_id===id;}).map(function(im){return '<div class="catalog-image-item" data-img="'+im.id+'"><img src="'+esc(publicImage(im.storage_path))+'"><div title="'+esc(im.original_filename)+'" style="font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(im.original_filename)+'</div><div class="catalog-image-actions"><button class="btn ghost" data-img-dl="'+im.id+'">原圖</button><button class="btn ghost" data-img-del="'+im.id+'">刪除</button></div></div>';}).join('');
