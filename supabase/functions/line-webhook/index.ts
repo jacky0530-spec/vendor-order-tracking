@@ -120,51 +120,7 @@ Deno.serve(async(req)=>{
 
   const task=(async()=>{
     try{
-      // Register verified group events; new groups remain disabled until approved by a manager.
-      // Existing LINE order processing remains unchanged.
-      for(const event of events){
-        const groupId=String(event?.source?.type==='group'?event?.source?.groupId??'':'');
-        if(!/^C[0-9a-fA-F]{32}$/.test(groupId))continue;
-        try{
-          if(event.type==='leave'){
-            await apiJson(base,serviceRole,'catalog_line_groups?line_group_id=eq.'+encodeURIComponent(groupId),{
-              method:'PATCH',headers:{Prefer:'return=minimal'},
-              body:JSON.stringify({connected:false,active:false,updated_at:new Date().toISOString()})
-            });
-            continue;
-          }
-          const existing=await apiJson(base,serviceRole,
-            'catalog_line_groups?select=id,group_name&line_group_id=eq.'+encodeURIComponent(groupId));
-          const found=Array.isArray(existing)&&existing.length>0;
-          let groupName='LINE 群組 '+groupId.slice(-6);
-          if(event.type==='join'){
-            const lineToken=Deno.env.get('LINE_CHANNEL_ACCESS_TOKEN')||'';
-            if(lineToken){
-              try{
-                const summary=await fetch('https://api.line.me/v2/bot/group/'+encodeURIComponent(groupId)+'/summary',{
-                  headers:{authorization:'Bearer '+lineToken}
-                });
-                if(summary.ok){
-                  const info=await summary.json();
-                  groupName=String(info.groupName||groupName).slice(0,120);
-                }
-              }catch(e){console.warn('LINE group summary unavailable',String(e));}
-            }
-          }
-          if(found){
-            const patch:any={connected:true,last_seen_at:new Date().toISOString(),updated_at:new Date().toISOString()};
-            if(event.type==='join'&&groupName)patch.group_name=groupName;
-            await apiJson(base,serviceRole,'catalog_line_groups?line_group_id=eq.'+encodeURIComponent(groupId),{
-              method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify(patch)
-            });
-          }else{
-            await apiJson(base,serviceRole,'catalog_line_groups',{
-              method:'POST',headers:{Prefer:'return=minimal'},
-              body:JSON.stringify({line_group_id:groupId,group_name:groupName,connected:true,active:false})
-            });
-          }
-        }catch(e){console.error('Catalog LINE group event failed',String(e));}
-      }
+      // Wholesale announcement groups are managed by the independent catalog-line-webhook.
       for(const event of unsendEvents){
         try{await processUnsend(event,base,serviceRole)}catch(e){console.error("LINE unsend failed",String(e));}
       }
