@@ -339,10 +339,10 @@ function renderAdminProducts(view){
         if(answer&&answer.ok===false&&answer.reason==='schedule_conflict'){
           var st=product.sale_start_at&&new Date(product.sale_start_at).getTime()>Date.now();
           var en=product.sale_end_at&&new Date(product.sale_end_at).getTime()<=Date.now();
-          var why=(st?'原訂開賣時間在未來，將改為現在開賣。\\n':'')+
-            (en?'原訂結單時間已過，將清除結單時間。\\n':'');
-          if(!confirm('「'+product.product_code+' '+product.name+'」目前有時間排程：\\n'+
-            why+'\\n確定立即上架嗎？'))return;
+          var why=(st?'原訂開賣時間在未來，將改為現在開賣。\n':'')+
+            (en?'原訂結單時間已過，將清除結單時間。\n':'');
+          if(!confirm('「'+product.product_code+' '+product.name+'」目前有時間排程：\n'+
+            why+'\n確定立即上架嗎？'))return;
           answer=await rpc('catalog_quick_set_publication',{
             p_product_id:id,p_publish:true,p_override_schedule:true
           });
