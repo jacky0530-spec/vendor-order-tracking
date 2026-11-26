@@ -193,12 +193,29 @@ async function toPng(canvas){
   if(blob.size>5*1024*1024)throw new Error('合成圖超過 5MB，請減少商品或使用較小照片');
   return blob;
 }
+async function toPreviewJpg(original){
+  var small=document.createElement('canvas');
+  small.width=480;
+  small.height=Math.round(original.height*480/original.width);
+  var ctx=small.getContext('2d');if(!ctx)throw new Error('瀏覽器無法產生 LINE 預覽圖');
+  ctx.fillStyle='#fff';ctx.fillRect(0,0,small.width,small.height);
+  ctx.drawImage(original,0,0,small.width,small.height);
+  async function make(q){
+    return new Promise(function(resolve,reject){
+      small.toBlob(function(b){b?resolve(b):reject(new Error('LINE 預覽圖合成失敗'));},'image/jpeg',q);
+    });
+  }
+  var blob=await make(.76);
+  if(blob.size>=900000)blob=await make(.52);
+  if(blob.size>=900000)throw new Error('LINE 預覽圖超出 1MB 限制');
+  return blob;
+}
 async function preview(){
   var selected=getSelected(),canvas=await composeDM(selected);
   $('catLinePreviewWrap').classList.remove('hidden');
-  var file=await toPng(canvas);
-  setStatus('DM 預覽完成：'+selected.length+' 件商品，'+(file.size/1024/1024).toFixed(2)+' MB。圖片已可儲存為排程附件。');
-  return {canvas:canvas,blob:file};
+  var file=await toPng(canvas),thumb=await toPreviewJpg(canvas);
+  setStatus('DM 預覽完成：'+selected.length+' 件商品，原圖 '+(file.size/1024/1024).toFixed(2)+' MB、LINE 縮圖 '+(thumb.size/1024).toFixed(0)+' KB。');
+  return {canvas:canvas,blob:file,previewBlob:thumb};
 }
 async function schedule(){
   var products=getSelected(),group=$('catLineTarget').value,date=$('catLineSchedule').value,
@@ -216,7 +233,7 @@ async function schedule(){
     '\n商品：'+products.map(function(x){return x.product_code;}).join('、')))return false;
   var result=await preview(),uuid=crypto.randomUUID(),owner=session()?.user?.id;
   if(!owner)throw new Error('登入資料已過期');
-  var path=owner+'/'+uuid+'.png';
+  var path=owner+'/'+uuid+'.png',previewPath=owner+'/'+uuid+'-preview.jpg';
   var resp=await fetch(BASE+'/storage/v1/object/catalog-line-dm/'+path,{
     method:'POST',
     headers:{apikey:KEY,authorization:'Bearer '+session().access_token,
@@ -224,9 +241,14 @@ async function schedule(){
     body:result.blob
   });
   if(!resp.ok)throw new Error('DM 上傳失敗：'+(await resp.text()).slice(0,250));
+  var previewRes=await fetch(BASE+'/storage/v1/object/catalog-line-dm/'+previewPath,{
+    method:'POST',headers:{apikey:KEY,authorization:'Bearer '+session().access_token,
+      'Content-Type':'image/jpeg','x-upsert':'false'},body:result.previewBlob
+  });
+  if(!previewRes.ok)throw new Error('LINE 縮圖上傳失敗：'+(await previewRes.text()).slice(0,250));
   await rpc('catalog_line_schedule_push',{
     p_group_id:group,p_product_ids:products.map(function(p){return p.id;}),
-    p_scheduled_at:scheduled.toISOString(),p_dm_storage_path:path,
+    p_scheduled_at:scheduled.toISOString(),p_dm_storage_path:path,p_preview_storage_path:previewPath,
     p_intro:intro,p_mall_url:ORIGIN
   });
   await reload();renderJobs();setStatus('已建立排程：'+fmt(scheduled.toISOString())+'，到時間會由 LINE 機器人發送 DM 與商城網址。');
