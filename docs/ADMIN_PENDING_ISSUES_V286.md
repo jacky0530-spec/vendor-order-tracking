@@ -77,3 +77,8 @@ Migration：\`catalog_admin_only_pending_issues_excel_fields_20261126\`
 2. 使用客戶帳號確認看不到提報入口，嘗試 API 查詢也應由 RLS 阻擋。
 3. 如需匯入 Excel 的 24 筆歷史表單資料，先建立比對／去重預覽與日期解析，不要將 1,000 筆格式空白列匯入。
 4. 變更功能前先核對 GitHub 最新 main 與 Supabase 已部署 schema。
+
+## V2.86 補充修正
+- 編輯表單已新增「完成日期」欄位，與 Excel 的「完成」日期欄相對應；完成日期使用既有 \`completed_at\` 儲存。
+- 問題單新增／修改及附件軟移除的 JSON REST 請求已補齊 Content-Type: application/json。
+- 結果排序狀態將「已完成」與原有案件狀態一同顯示，方便查核已完成但仍標記等待廠商的表單資料。
