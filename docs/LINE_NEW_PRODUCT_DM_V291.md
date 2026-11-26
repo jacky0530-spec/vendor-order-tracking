@@ -17,7 +17,7 @@ https://jacky0530-spec.github.io/vendor-order-tracking/
 ## 既有架構
 - GitHub：`jacky0530-spec/vendor-order-tracking`，GitHub Pages 靜態網站。
 - Supabase 專案：`qibeuakrryqjaiwbcorg`。
-- LINE 官方機器人沿用現有 `line-webhook` 頻道與環境變數 `LINE_CHANNEL_ACCESS_TOKEN`。
+- **V2.92 已改為獨立的「宜羿新品通知」官方帳號**：新品系統使用 `catalog-line-webhook` 與 `LINE_CATALOG_CHANNEL_ACCESS_TOKEN` / `LINE_CATALOG_CHANNEL_SECRET`；原有 `line-webhook`、`LINE_CHANNEL_ACCESS_TOKEN`、`LINE_CHANNEL_SECRET` 只服務訂單匯入，避免混用。
 - LINE 已有的訂單 Webhook 及 `line-worker` 保留，不新建第二個競爭的 Webhook URL。
 - Supabase Cron（pg_cron、pg_net）每分鐘喚醒新的 Edge Function。
 
@@ -102,3 +102,11 @@ https://jacky0530-spec.github.io/vendor-order-tracking/
 - 只推播 `visibility_mode='all'` 的一般批發價；客戶專屬價格不能發送到未經授權的群組。
 - 正式 LINE push 會按群組接收者人數計算官方訊息額度。
 - 上傳圖片的品質與尺寸須在 Windows、iPad 實測，若超過 LINE 預覽限制前端會拒絕建立排程。
+
+## V2.92：專屬 LINE 新品通知機器人（2026-11-27）
+- 新建 Supabase Edge Function `catalog-line-webhook`，Webhook URL：`https://qibeuakrryqjaiwbcorg.supabase.co/functions/v1/catalog-line-webhook`，部署 `verify_jwt=false`，使用 `LINE_CATALOG_CHANNEL_SECRET` 驗證 X-Line-Signature，未配置密鑰時回 503；僅處理 LINE 官方驗簽後的群組加入、訊息和離群事件，不接受前端自造 groupId
+- `catalog-line-dispatch` 改為只讀 `LINE_CATALOG_CHANNEL_ACCESS_TOKEN`，**不回退到舊的 LINE_CHANNEL_ACCESS_TOKEN**，未配置時回報 `configured:false, processed:0`，不送出任何訊息
+- 原 `line-webhook` 移除 V2.91 新增的商品群組登錄區段，保留既有 LINE 訂單解析及撤回邏輯，避免兩個 LINE 官方帳號混用群組資料
+- 商城後台新增新機器人建立說明與 Webhook 網址複製按鈕，版號更新 V2.92
+- 帳號建立必須在 LINE 官方管理中心由帳號持有人完成，需自行在 Supabase Edge Function Secrets 儲存兩項密鑰，**不要傳到聊天或提交 GitHub**。參見 `docs/LINE_CATALOG_BOT_SETUP_V292.md`
+- 新機器人新增到群組後，群組仍預設 `active=false`，必須管理員手動啟用。LINE 同一個群組最多只能加入一個官方帳號，若已有舊機器人，需先調整群組佈署。
