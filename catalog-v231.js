@@ -4,6 +4,8 @@
 
 var CFG=window.APP_CONFIG||{}, SB=CFG.SUPABASE_URL, KEY=CFG.SUPABASE_PUBLISHABLE_KEY;
 var state={profile:null,levels:[],vendors:[],customers:[],products:[],images:[],variants:[],adminReady:false,customerReady:false,currentProduct:null};
+var pendingProductImages=[],pendingImageSequence=0;
+
 function $(id){return document.getElementById(id);}
 function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
 function money(v){return '$'+Number(v||0).toLocaleString('zh-TW',{minimumFractionDigits:0,maximumFractionDigits:2});}
@@ -797,7 +799,7 @@ function ensureProductModal(){
   if($('catProductModal'))return;
   var d=document.createElement('div');d.id='catProductModal';d.className='catalog-modal hidden';
   d.innerHTML='<div class="catalog-modal-card"><div class="catalog-modal-head"><div><h2 id="catProductTitle">新增商品</h2><div class="muted">員工/管理員可刊登；圖片保留原始檔供廠商下載。</div></div><button class="catalog-close" data-cat-close>×</button></div><div id="catProductBody"></div><div id="catProductMsg" class="message"></div><div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px"><button class="btn ghost" data-cat-close>取消</button><button id="catSaveProduct" class="btn primary">儲存商品</button></div></div>';
-  document.body.appendChild(d);d.querySelectorAll('[data-cat-close]').forEach(function(x){x.addEventListener('click',function(){d.classList.add('hidden');});});$('catSaveProduct').addEventListener('click',saveProduct);
+  document.body.appendChild(d);d.querySelectorAll('[data-cat-close]').forEach(function(x){x.addEventListener('click',function(){if($('catSaveProduct').disabled)return;resetPendingProductImages();d.classList.add('hidden');});});$('catSaveProduct').addEventListener('click',saveProduct);
 }
 async function openProductEditor(id){
   ensureProductModal();state.currentProduct=id?state.products.find(function(x){return x.id===id;}):null;
@@ -833,7 +835,16 @@ async function openProductEditor(id){
     '<div class="catalog-block"><h3>指定販售對象</h3><p class="muted">販售對象選「指定等級/客戶」時才生效。</p><b>等級</b><div class="catalog-checkbox-list">'+state.levels.map(function(l){return '<label><input type="checkbox" data-cat-access-level="'+l.id+'" '+(ac.some(function(a){return a.level_id===l.id;})?'checked':'')+'> '+esc(l.name)+'</label>';}).join('')+'</div><b style="display:block;margin-top:10px">個別客戶</b><div class="catalog-checkbox-list">'+state.customers.filter(function(v){return v.active;}).map(function(v){return '<label><input type="checkbox" data-cat-access-customer="'+v.id+'" '+(ac.some(function(a){return a.customer_id===v.id;})?'checked':'')+'> '+esc(v.customer_code+' '+v.name)+'</label>';}).join('')+'</div></div>'+
     '<div class="catalog-block"><h3>多層規格組合</h3><p class="muted">每行一層規格，例如：尺寸｜單人,雙人 或 顏色｜白色,灰色。最多三層，產生後可在下方逐筆修改規格編號、加價及最低量。</p><textarea id="catPDimensions" style="width:100%;min-height:85px" placeholder="尺寸｜單人,雙人\n顏色｜白色,灰色"></textarea><button id="catGenerateVariants" type="button" class="btn secondary">產生全部規格組合</button><div id="catDimensionMsg" class="muted"></div></div>'+ 
     '<div class="catalog-block"><h3>商品規格明細</h3><p class="muted">直接逐列編輯規格，或按「新增規格」。停售或缺貨不會刪除歷史訂單。</p><div id="catVariantRows"></div><button type="button" id="catAddVariant" class="btn secondary" style="margin-top:9px">＋新增規格</button><textarea id="catPVariants" style="display:none">'+esc(variantsText(id))+'</textarea></div>'+
-    '<div class="catalog-block"><h3>商品圖片（可多張）</h3><input id="catPImages" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple><div class="muted" style="margin:6px 0">每張上限 20MB；下載時保留原始上傳檔。</div><div id="catExistingImages" class="catalog-image-list">'+renderImageAdmin(id)+'</div></div>';
+    '<div class="catalog-block"><h3>商品圖片（可多張）</h3>'+
+    '<input id="catPImages" type="file" accept="image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp,.gif" multiple hidden>'+
+    '<div id="catImageDropZone" class="cat-image-dropzone" role="button" tabindex="0" aria-label="拖入或選擇商品圖片">'+
+    '<div class="cat-image-dropzone-title">📷 將照片拖曳到這裡</div>'+
+    '<div class="cat-image-dropzone-help">支援從電腦資料夾、電腦版 LINE 群組拖曳；也可複製圖片後在此按 Ctrl+V 貼上。</div>'+
+    '<button type="button" class="btn secondary" id="catImageChooseFiles">選擇照片（可多張）</button></div>'+
+    '<div id="catPendingImageStatus" class="muted cat-image-status" role="status">尚未加入新照片。</div>'+
+    '<div id="catPendingImageGrid" class="catalog-image-list cat-pending-image-grid"></div>'+
+    '<p class="muted cat-image-hint">支援 JPG、PNG、WEBP、GIF；每張上限 20MB。拖入後先顯示預覽，按「儲存商品」才正式上傳。若 LINE 不允許直接拖出圖片，可在 LINE 複製圖片後貼上，或先儲存到電腦再拖入。</p>'+
+    '<div id="catExistingImages" class="catalog-image-list">'+renderImageAdmin(id)+'</div></div>';
   $('catAddVendorPrice').addEventListener('click',function(){$('catVendorPriceRows').insertAdjacentHTML('beforeend',vendorPriceRow(null));bindVendorPriceRemove();});
   $('catGenerateVariants').onclick=function(){
     try{
@@ -860,6 +871,7 @@ async function openProductEditor(id){
   renderVariantRows();
   $('catAddVariant').onclick=function(){syncVariantRows();$('catPVariants').value+=($('catPVariants').value?'\n':'')+'｜新規格｜0｜1｜available';renderVariantRows();};
   bindVendorPriceRemove();bindImageAdmin();
+  resetPendingProductImages();bindProductImageInput();
   $('catProductModal').classList.remove('hidden');
 }
 function toLocalInput(v){if(!v)return '';var d=new Date(v),off=d.getTimezoneOffset();return new Date(d.getTime()-off*60000).toISOString().slice(0,16);}
@@ -868,6 +880,108 @@ function vendorPriceRow(x){
   x=x||{};return '<div class="catalog-vendor-price-row"><label class="wide">客戶<select data-vp-customer>'+state.customers.filter(function(v){return v.active;}).map(function(v){return '<option value="'+v.id+'" '+(x.customer_id===v.id?'selected':'')+'>'+esc(v.customer_code+' '+v.name)+'</option>';}).join('')+'</select></label><label>專屬價<input data-vp-price type="number" min="0" step="0.01" value="'+(x.price!=null?esc(x.price):'')+'"></label><label>最低量<input data-vp-min type="number" min="0" step="any" value="'+(x.min_order_qty!=null?esc(x.min_order_qty):'')+'"></label><button type="button" class="btn ghost" data-vp-remove>移除</button></div>';
 }
 function bindVendorPriceRemove(){$('catVendorPriceRows').querySelectorAll('[data-vp-remove]').forEach(function(b){b.onclick=function(){b.closest('.catalog-vendor-price-row').remove();};});}
+function resetPendingProductImages(){
+  pendingProductImages.forEach(function(x){URL.revokeObjectURL(x.url);});
+  pendingProductImages=[];
+}
+function renderPendingProductImages(message){
+  var grid=$('catPendingImageGrid'),label=$('catPendingImageStatus');if(!grid||!label)return;
+  grid.innerHTML=pendingProductImages.map(function(x){
+    return '<div class="catalog-image-item cat-pending-image-item" data-pending-image="'+esc(x.id)+'">'+
+      '<img src="'+esc(x.url)+'" alt="'+esc(x.file.name)+'">'+
+      '<div class="cat-image-filename" title="'+esc(x.file.name)+'">'+esc(x.file.name)+'</div>'+
+      '<div class="catalog-image-actions"><span class="cat-image-queued">待上傳</span>'+
+      '<button type="button" class="btn ghost" data-remove-pending="'+esc(x.id)+'">移除</button></div></div>';
+  }).join('');
+  label.textContent=message||(pendingProductImages.length?
+    '已選擇 '+pendingProductImages.length+' 張照片，按「儲存商品」才會上傳。':
+    '尚未加入新照片。');
+  grid.querySelectorAll('[data-remove-pending]').forEach(function(b){b.onclick=function(){
+    var index=pendingProductImages.findIndex(function(x){return x.id===b.dataset.removePending;});
+    if(index>=0){URL.revokeObjectURL(pendingProductImages[index].url);pendingProductImages.splice(index,1);renderPendingProductImages();}
+  };});
+}
+function validProductImage(file){
+  if(!file||!file.size)throw new Error('有一張圖片是空檔案。');
+  if(file.size>20*1024*1024)throw new Error((file.name||'圖片')+' 超過 20MB，未加入。');
+  if(!/^image\/(jpeg|png|webp|gif)$/i.test(file.type||'')&&!/\.(jpe?g|png|webp|gif)$/i.test(file.name||''))
+    throw new Error((file.name||'檔案')+' 不是支援的圖片格式（JPG、PNG、WEBP、GIF）。');
+}
+function addPendingProductImages(files,source){
+  var added=0,errors=[];
+  Array.from(files||[]).forEach(function(file){
+    try{
+      validProductImage(file);
+      if(pendingProductImages.length>=80)throw new Error('單次最多保留 80 張待上傳照片。');
+      if(pendingProductImages.some(function(x){
+        return x.file.name===file.name&&x.file.size===file.size&&x.file.lastModified===file.lastModified;
+      }))return;
+      pendingProductImages.push({id:String(++pendingImageSequence),file:file,url:URL.createObjectURL(file)});
+      added++;
+    }catch(err){errors.push(err.message);}
+  });
+  var msg=errors.length?errors.join('；'):null;
+  if(added)msg='已從'+(source||'檔案')+'加入 '+added+' 張，待上傳共 '+pendingProductImages.length+' 張。'+(msg?' '+msg:'');
+  renderPendingProductImages(msg);
+}
+async function productImageFromDragHtml(dt){
+  var html='';try{html=dt.getData('text/html')||'';}catch(e){}
+  if(!html)return null;
+  var doc=new DOMParser().parseFromString(html,'text/html'),image=doc.querySelector('img[src]');
+  if(!image)return null;
+  var raw=image.getAttribute('src')||'';
+  if(raw.startsWith('//'))raw=location.protocol+raw;
+  var url;try{url=new URL(raw,location.href);}catch(e){return null;}
+  if(!['https:','http:','blob:','data:'].includes(url.protocol))
+    throw new Error('LINE 未提供可讀取的圖片檔案；請在 LINE 對圖片按右鍵複製，再到此處 Ctrl+V 貼上。');
+  if(url.protocol==='data:'&&raw.length>28*1024*1024)throw new Error('拖入的圖片超過 20MB 上限。');
+  var response;
+  try{response=await fetch(url.href,{mode:'cors',credentials:'omit'});}catch(e){
+    throw new Error('LINE 圖片來源不允許網頁直接讀取；請複製圖片再按 Ctrl+V 貼上，或先存到電腦。');
+  }
+  if(!response.ok)throw new Error('圖片連結無法讀取，請改用複製貼上或儲存後拖入。');
+  var mime=(response.headers.get('Content-Type')||'').split(';')[0].toLowerCase();
+  if(!/^image\/(jpeg|png|webp|gif)$/.test(mime))throw new Error('拖入的連結不是可上傳的圖片。請複製圖片本身後貼上。');
+  var sizeHeader=Number(response.headers.get('Content-Length')||0);
+  if(sizeHeader>20*1024*1024)throw new Error('拖入的圖片超過 20MB 上限。');
+  var blob=await response.blob();
+  if(!blob.size||blob.size>20*1024*1024)throw new Error('圖片為空或超過 20MB。');
+  var ext={ 'image/jpeg':'jpg','image/png':'png','image/webp':'webp','image/gif':'gif'}[mime];
+  return new File([blob],'LINE_圖片_'+Date.now()+'.'+ext,{type:mime});
+}
+function bindProductImageInput(){
+  var picker=$('catPImages'),zone=$('catImageDropZone'),choose=$('catImageChooseFiles'),modal=$('catProductModal');
+  if(!picker||!zone||!modal)return;
+  picker.onchange=function(){addPendingProductImages(picker.files,'選擇的檔案');picker.value='';};
+  choose.onclick=function(e){e.stopPropagation();picker.click();};
+  zone.onclick=function(e){if(!e.target.closest('button'))picker.click();};
+  zone.onkeydown=function(e){if((e.key==='Enter'||e.key===' ')&&e.target===zone){e.preventDefault();picker.click();}};
+  zone.ondragover=function(e){e.preventDefault();e.dataTransfer.dropEffect='copy';zone.classList.add('is-dragging');};
+  zone.ondragleave=function(e){if(!zone.contains(e.relatedTarget))zone.classList.remove('is-dragging');};
+  zone.ondrop=async function(e){
+    e.preventDefault();e.stopPropagation();zone.classList.remove('is-dragging');
+    var files=Array.from(e.dataTransfer.files||[]);
+    if(!files.length)files=Array.from(e.dataTransfer.items||[]).filter(function(x){return x.kind==='file';}).map(function(x){return x.getAsFile();}).filter(Boolean);
+    if(files.length){addPendingProductImages(files,'拖曳');return;}
+    try{
+      renderPendingProductImages('正在讀取拖入的圖片…');
+      var image=await productImageFromDragHtml(e.dataTransfer);
+      if(image)addPendingProductImages([image],'LINE 圖片');
+      else renderPendingProductImages('沒有取得圖片檔案。請在 LINE 複製圖片，再在這裡按 Ctrl+V；或先將圖片存到電腦。');
+    }catch(err){renderPendingProductImages(err.message);}
+  };
+  // The modal receives clipboard images even when another form field has focus.
+  modal.onpaste=function(e){
+    if(modal.classList.contains('hidden')||!e.clipboardData)return;
+    var files=Array.from(e.clipboardData.files||[]);
+    if(!files.length)files=Array.from(e.clipboardData.items||[]).filter(function(x){
+      return x.kind==='file'&&/^image\//.test(x.type);
+    }).map(function(x){return x.getAsFile();}).filter(Boolean);
+    if(!files.length)return;
+    e.preventDefault();
+    addPendingProductImages(files,'貼上');
+  };
+}
 function renderImageAdmin(id){
   if(!id)return '';return state.images.filter(function(x){return x.product_id===id;}).map(function(im){return '<div class="catalog-image-item" data-img="'+im.id+'"><img src="'+esc(publicImage(im.storage_path))+'"><div title="'+esc(im.original_filename)+'" style="font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(im.original_filename)+'</div><div class="catalog-image-actions"><button class="btn ghost" data-img-dl="'+im.id+'">原圖</button><button class="btn ghost" data-img-del="'+im.id+'">刪除</button></div></div>';}).join('');
 }
@@ -950,10 +1064,12 @@ async function saveProduct(){
       await rest('catalog_products?id=eq.'+state.currentProduct.id,{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify(payload)});pid=state.currentProduct.id;
     }else{
       payload.created_by=sess().user.id;var rr=await rest('catalog_products',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify(payload)});pid=rr[0].id;
+      // Keep the created product ID if a later image upload fails, so retry does not create a duplicate product.
+      state.currentProduct=Object.assign({id:pid},payload);
     }
     // 保留已被採購單、訂單或購物車引用的規格 ID；不得整批刪除再新增。
     var desired=parseVariants($('catPVariants').value);
-    var existing=state.currentProduct?await rest('catalog_variants?select=*&product_id=eq.'+pid):[];
+    var existing=await rest('catalog_variants?select=*&product_id=eq.'+pid);
     var used=new Set(),toInsert=[];
     for(var vi=0;vi<desired.length;vi++){
       var v=desired[vi];
@@ -980,7 +1096,14 @@ async function saveProduct(){
     if(payload.visibility_mode==='restricted'){
       var acc=[];document.querySelectorAll('[data-cat-access-level]:checked').forEach(function(x){acc.push({product_id:pid,level_id:x.dataset.catAccessLevel});});document.querySelectorAll('[data-cat-access-customer]:checked').forEach(function(x){acc.push({product_id:pid,customer_id:x.dataset.catAccessCustomer});});if(acc.length)await rest('catalog_customer_access',{method:'POST',body:JSON.stringify(acc)});
     }
-    var files=Array.from($('catPImages').files||[]);for(var i=0;i<files.length;i++)await uploadImage(pid,files[i],i);
+    var imageIndex=0;
+    while(pendingProductImages.length){
+      var pending=pendingProductImages[0];
+      await uploadImage(pid,pending.file,imageIndex++);
+      URL.revokeObjectURL(pending.url);
+      pendingProductImages.shift();
+      renderPendingProductImages();
+    }
     msg.textContent='儲存完成';msg.className='message success';await loadCommonAdmin();renderAdminProducts();setTimeout(function(){$('catProductModal').classList.add('hidden');},500);
   }catch(e){msg.textContent='儲存失敗：'+e.message;msg.className='message error';}
   finally{save.disabled=false;save.textContent='儲存商品';}
