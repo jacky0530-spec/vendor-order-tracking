@@ -55,7 +55,7 @@ function groupList(){
       '<button type="button" class="btn '+(g.active?'ghost':'secondary')+
       '" data-line-group-toggle="'+esc(g.id)+'" '+(!g.connected?'disabled':'')+'>'+
       (g.active?'停用推播':'啟用推播')+'</button></div>';
-  }).join(''):'<p class="muted">尚未偵測到群組。請在 LINE 私人群組邀請目前商城使用的官方帳號機器人；已在群內的機器人，可由群組傳送一則訊息觸發登錄。新群組預設不發送。</p>';
+  }).join(''):'<p class="muted">尚未偵測到群組。請先建立「宜羿新品通知」專用 LINE 官方帳號並啟用 Messaging API，邀請機器人加入測試私人群組，再傳送一則訊息觸發登錄。</p>';
   el.querySelectorAll('[data-line-group-toggle]').forEach(function(b){b.onclick=async function(){
     var g=model.groups.find(function(x){return x.id===b.dataset.lineGroupToggle;});
     if(!g)return;
@@ -261,6 +261,10 @@ async function render(){
     await reload();
     root.innerHTML='<div class="catalog-block cat-line-manager">'+
       '<h3>LINE 新品推播</h3><p class="muted">選擇 1～6 件新上架商品，合成一張 DM，並在指定時間發送到私人 LINE 群組。只顯示全客戶可見的已上架新品；不會自動發送舊商品。</p>'+
+      '<div class="cat-line-setup"><strong>首次啟用：建立「宜羿新品通知」LINE 機器人</strong>'+
+      '<p>先至 <a href="https://manager.line.biz/" target="_blank" rel="noopener noreferrer">LINE 官方帳號管理中心</a> 建立帳號並啟用 Messaging API，再到 <a href="https://developers.line.biz/console/" target="_blank" rel="noopener noreferrer">LINE Developers</a> 設定 Webhook 及允許機器人加入私人群組。</p>'+
+      '<div class="cat-line-webhook"><code id="catLineWebhookUrl">https://qibeuakrryqjaiwbcorg.supabase.co/functions/v1/catalog-line-webhook</code><button class="btn secondary" type="button" id="catLineCopyWebhook">複製 Webhook</button></div>'+
+      '<p class="muted">新機器人的 Channel Secret、Access Token 應安全儲存於 Supabase Edge Function Secrets，不可貼在 GitHub 或商城前端。群組加入後才會出現在下方，並須手動啟用推播。</p></div>'+
       '<h4>1．私人 LINE 群組</h4><div id="catLineGroups"></div>'+
       '<h4>2．選擇新上架商品 <span id="catLineSelectedCount" class="muted"></span></h4>'+
       '<div class="cat-line-products" id="catLineProducts"></div>'+
@@ -276,6 +280,10 @@ async function render(){
       '<div id="catLinePreviewWrap" class="cat-line-preview hidden"><canvas id="catLineCanvas" aria-label="新品 DM 圖片預覽"></canvas></div>'+
       '<h4>4．發送紀錄（最近 30 筆）</h4><div id="catLineJobHistory"></div>'+
       '<p class="muted">排程到時間前可取消。LINE 官方帳號必須加入群組且具備有效 Messaging API 權杖；訊息包含一張 DM 圖片與一則可點擊商城網址的文字。</p></div>';
+    $('catLineCopyWebhook').onclick=async function(){
+      try{await navigator.clipboard.writeText($('catLineWebhookUrl').textContent);setStatus('Webhook 網址已複製');}
+      catch(e){setStatus('自動複製失敗，請手動選取 Webhook 網址',true);}
+    };
     $('catLineSchedule').value=localTaipei(15);
     groupList();refreshGroupSelect();renderProducts();renderJobs();
     $('catLinePreviewButton').onclick=async function(){
