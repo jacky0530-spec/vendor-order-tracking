@@ -251,7 +251,7 @@ async function openIssueEditor(current,customers,container){
      b.disabled=true;
      try{
        await api('ng_photos?id=eq.'+encodeURIComponent(b.dataset.issueHideMedia),
-         {method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify({deleted_at:new Date().toISOString()})});
+         {method:'PATCH',headers:{'Content-Type':'application/json',Prefer:'return=minimal'},body:JSON.stringify({deleted_at:new Date().toISOString()})});
        attachments=attachments.filter(function(x){return x.id!==b.dataset.issueHideMedia;});
        drawExisting();
      }catch(err){alert('移除附件失敗：'+err.message);b.disabled=false;}
@@ -286,10 +286,10 @@ async function openIssueEditor(current,customers,container){
      for(var o of files)validated.push(await validateMedia(o.file));
      if(currentTicket){
        await api('ng_tickets?id=eq.'+encodeURIComponent(currentTicket.id),
-         {method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify(values)});
+         {method:'PATCH',headers:{'Content-Type':'application/json',Prefer:'return=minimal'},body:JSON.stringify(values)});
      }else{
        var inserted=await api('ng_tickets',{method:'POST',
-          headers:{Prefer:'return=representation'},body:JSON.stringify(values)});
+          headers:{'Content-Type':'application/json',Prefer:'return=representation'},body:JSON.stringify(values)});
        currentTicket=inserted[0];
        $('issueModalTitle').textContent='修改待處理問題單 PN-'+String(currentTicket.ticket_number).padStart(6,'0');
      }
