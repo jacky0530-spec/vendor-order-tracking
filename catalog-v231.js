@@ -1324,6 +1324,160 @@ async function renderAdminPurchaseRequests(){
   };});
 }
 
+
+async function openCustomerPurchaseEditor(requestId){
+  if(!isCustomer())return;
+  var old=$('catPurchaseEditModal');if(old)old.remove();
+  var result=await Promise.all([
+    rest('customer_purchase_requests?select=*&id=eq.'+encodeURIComponent(requestId)+'&customer_id=eq.'+encodeURIComponent(state.profile.customer_id)),
+    rest('customer_purchase_request_items?select=*&request_id=eq.'+encodeURIComponent(requestId)+'&order=sort_order.asc'),
+    rest('customer_addresses?select=id,receiver_name,phone,address,is_default,active&customer_id=eq.'+encodeURIComponent(state.profile.customer_id)+'&active=eq.true&order=is_default.desc'),
+    restAll('catalog_storefront?select=id,product_code,name,order_unit,active,published,sale_start_at,sale_end_at,effective_price&order=product_code.asc'),
+    restAll('catalog_variants?select=id,product_id,name,price_delta,active,sale_status,sort_order&order=sort_order.asc')
+  ]);
+  var req=result[0]&&result[0][0],original=result[1]||[],addresses=result[2]||[],
+      now=Date.now(),products=(result[3]||[]).filter(function(p){
+        return p.active&&p.published&&(!p.sale_start_at||new Date(p.sale_start_at).getTime()<=now)&&
+        (!p.sale_end_at||new Date(p.sale_end_at).getTime()>=now);
+      }),variants=result[4]||[];
+  if(!req)throw new Error('找不到您的採購單');
+  if(req.status!=='pending')throw new Error('採購單已審核或退回，無法修改');
+  var rows=original.map(function(x){return {
+    id:x.id,product_id:x.product_id,variant_id:x.variant_id||null,
+    name:x.product_code+' '+x.product_name,variant_name:x.variant_name||'',
+    quantity:Number(x.quantity),unit_price:Number(x.unit_price),original_variant_id:x.variant_id||null,
+    order_unit:x.order_unit||''
+  };});
+  var modal=document.createElement('div');modal.className='catalog-modal';modal.id='catPurchaseEditModal';
+  modal.innerHTML='<div class="catalog-modal-card cat-purchase-edit-modal">'+
+    '<div class="catalog-modal-head"><div><h2>修改待審核採購單 PUR-'+String(req.request_no).padStart(6,'0')+'</h2>'+
+    '<p class="muted" style="margin:4px 0">只有待審核採購單可以修改；管理員確認後，商品與收件資料立即鎖定。</p></div>'+
+    '<button type="button" class="catalog-close" id="catPurchaseEditClose" aria-label="關閉修改視窗">×</button></div>'+
+    '<div class="catalog-block"><h3>商品明細</h3><div id="catPurchaseEditRows"></div>'+
+    '<button type="button" class="btn secondary" id="catPurchaseEditAdd">＋新增商品</button>'+
+    '<div class="cat-purchase-edit-total" id="catPurchaseEditTotal"></div></div>'+
+    '<div class="catalog-block"><h3>收貨資料與備註</h3><label>收貨資料<select id="catPurchaseEditAddress" style="width:100%;margin-top:5px">'+
+    '<option value="">本次自行填寫收貨資料</option>'+
+    addresses.map(function(a){return '<option value="'+esc(a.id)+'" '+(req.customer_address_id===a.id?'selected':'')+'>'+
+      esc((a.is_default?'★ ':'')+(a.receiver_name||'')+'｜'+(a.phone||'')+'｜'+(a.address||''))+'</option>';}).join('')+
+    '</select></label><div class="catalog-checkout-grid" id="catPurchaseEditShipping">'+
+    '<label>收貨人<input id="catPurchaseEditReceiver" maxlength="150" value="'+esc(req.receiver||'')+'"></label>'+
+    '<label>收件電話<input id="catPurchaseEditPhone" maxlength="80" value="'+esc(req.receiver_phone||'')+'"></label>'+
+    '<label class="full">完整地址<input id="catPurchaseEditShipAddress" maxlength="1000" value="'+esc(req.receiver_address||'')+'"></label></div>'+
+    '<label>備註<textarea id="catPurchaseEditNote" maxlength="2000" style="width:100%;min-height:75px">'+esc(req.note||'')+'</textarea></label></div>'+
+    '<div id="catPurchaseEditMessage" class="message" role="status"></div>'+
+    '<div class="cat-purchase-edit-actions"><button type="button" class="btn ghost" id="catPurchaseEditCancel">取消</button>'+
+    '<button type="button" class="btn primary" id="catPurchaseEditSave">儲存修改（保持待審核）</button></div></div>';
+  document.body.appendChild(modal);
+  var holder=$('catPurchaseEditRows'),status=$('catPurchaseEditMessage'),saving=false;
+  function productOf(l){return products.find(function(p){return p.id===l.product_id;});}
+  function lineVariants(l){
+    return variants.filter(function(v){return v.product_id===l.product_id&&
+      (v.active&&v.sale_status==='available'||l.id&&v.id===l.original_variant_id);});
+  }
+  function estimate(l){
+    var prod=productOf(l),v=variants.find(function(x){return x.id===l.variant_id;});
+    if(l.id&&l.variant_id===l.original_variant_id)return l.unit_price*l.quantity;
+    return prod?(Number(prod.effective_price||0)+Number(v&&v.price_delta||0))*l.quantity:0;
+  }
+  function renderRows(){
+    holder.innerHTML=rows.map(function(l,i){
+      var prod=productOf(l),options=lineVariants(l),hasVariants=options.some(function(v){return v.active&&v.sale_status==='available';});
+      var productsOptions=l.id?'<strong>'+esc(l.name)+'</strong>':
+        '<label>商品<select data-pedit-field="product_id" data-pedit-index="'+i+'">'+
+        products.map(function(p){return '<option value="'+esc(p.id)+'" '+(p.id===l.product_id?'selected':'')+'>'+
+          esc(p.product_code+' '+p.name)+'</option>';}).join('')+'</select></label>';
+      var variantOptions='<label>規格<select data-pedit-field="variant_id" data-pedit-index="'+i+'" '+
+        (!prod&&l.id?'disabled':'')+'><option value="">無規格'+(hasVariants?'（請選擇規格）':'')+'</option>'+
+        options.map(function(v){return '<option value="'+esc(v.id)+'" '+(l.variant_id===v.id?'selected':'')+'>'+
+          esc(v.name+(v.sale_status!=='available'?'（已停售）':''))+'</option>';}).join('')+
+        '</select></label>';
+      return '<div class="cat-purchase-edit-row">'+
+        '<div class="cat-purchase-edit-name">'+productsOptions+'</div>'+variantOptions+
+        '<label>數量<input data-pedit-field="quantity" data-pedit-index="'+i+'" type="number" min="0.01" step="any" value="'+esc(l.quantity)+'"></label>'+
+        '<span class="cat-purchase-edit-subtotal" data-pedit-subtotal="'+i+'">'+money(estimate(l))+'</span>'+
+        '<button type="button" class="btn ghost" data-pedit-remove="'+i+'">移除</button></div>';
+    }).join('')||'<div class="catalog-empty">尚無商品。請按「新增商品」。</div>';
+    updateEstimate();
+  }
+  function updateEstimate(){
+    $('catPurchaseEditTotal').textContent='預估商品總額：'+money(rows.reduce(function(t,l){return t+estimate(l);},0))+
+      '（儲存時由系統正式核算價格與限購數量）';
+    holder.querySelectorAll('[data-pedit-subtotal]').forEach(function(el){
+      el.textContent=money(estimate(rows[Number(el.dataset.peditSubtotal)]));
+    });
+  }
+  function toggleAddress(){
+    var a=addresses.find(function(x){return x.id===$('catPurchaseEditAddress').value;});
+    var fields=[['catPurchaseEditReceiver','receiver_name'],['catPurchaseEditPhone','phone'],['catPurchaseEditShipAddress','address']];
+    fields.forEach(function(k){
+      $(k[0]).readOnly=!!a;
+      if(a)$(k[0]).value=a[k[1]]||'';
+    });
+  }
+  $('catPurchaseEditAddress').onchange=toggleAddress;toggleAddress();
+  function close(){if(!saving)modal.remove();}
+  $('catPurchaseEditClose').onclick=close;$('catPurchaseEditCancel').onclick=close;
+  $('catPurchaseEditAdd').onclick=function(){
+    if(!products.length){status.textContent='目前沒有可新增的上架商品';return;}
+    var p=products[0],vs=variants.filter(function(v){return v.product_id===p.id&&v.active&&v.sale_status==='available';});
+    rows.push({id:null,product_id:p.id,variant_id:vs.length===1?vs[0].id:null,
+      quantity:1,unit_price:Number(p.effective_price||0),order_unit:p.order_unit||'',name:p.product_code+' '+p.name});
+    renderRows();holder.lastElementChild?.scrollIntoView({block:'nearest'});
+  };
+  holder.oninput=function(e){
+    var i=Number(e.target.dataset.peditIndex);if(!Number.isInteger(i)||!rows[i])return;
+    if(e.target.dataset.peditField==='quantity'){
+      rows[i].quantity=Number(e.target.value);
+      updateEstimate();
+    }
+  };
+  holder.onchange=function(e){
+    var i=Number(e.target.dataset.peditIndex);if(!Number.isInteger(i)||!rows[i])return;
+    var field=e.target.dataset.peditField;
+    if(field==='product_id'){
+      rows[i].product_id=e.target.value;
+      var vs=variants.filter(function(v){return v.product_id===e.target.value&&v.active&&v.sale_status==='available';});
+      rows[i].variant_id=vs.length===1?vs[0].id:null;
+      renderRows();
+    }else if(field==='variant_id'){rows[i].variant_id=e.target.value||null;updateEstimate();}
+  };
+  holder.onclick=function(e){
+    var btn=e.target.closest('[data-pedit-remove]');if(!btn)return;
+    rows.splice(Number(btn.dataset.peditRemove),1);renderRows();
+  };
+  renderRows();
+  $('catPurchaseEditSave').onclick=async function(){
+    if(saving)return;
+    if(!rows.length){status.textContent='至少保留一筆商品；如需取消整筆請聯繫管理員。';status.className='message error';return;}
+    if(rows.some(function(x){return !Number.isFinite(x.quantity)||x.quantity<=0})){
+      status.textContent='所有商品數量必須大於零。';status.className='message error';return;
+    }
+    if(rows.some(function(x){
+      return !x.variant_id&&variants.some(function(v){
+        return v.product_id===x.product_id&&v.active&&v.sale_status==='available';
+      })&&(!x.id||x.variant_id!==x.original_variant_id);
+    })){
+      status.textContent='有商品尚未選擇規格，請先選取。';status.className='message error';return;
+    }
+    var addressId=$('catPurchaseEditAddress').value||null,
+        recv=$('catPurchaseEditReceiver').value.trim(),phone=$('catPurchaseEditPhone').value.trim(),
+        address=$('catPurchaseEditShipAddress').value.trim();
+    if(!recv||!phone||!address){status.textContent='請完整填寫收貨人、電話及地址。';status.className='message error';return;}
+    var b=this;saving=true;b.disabled=true;status.textContent='正在儲存修改，請勿重複送出…';status.className='message';
+    try{
+      var out=await rpc('catalog_customer_update_pending_purchase',{
+        p_request_id:req.id,
+        p_lines:rows.map(function(x){return {id:x.id||null,product_id:x.product_id,variant_id:x.variant_id||null,quantity:x.quantity};}),
+        p_customer_address_id:addressId,
+        p_receiver:addressId?null:recv,p_phone:addressId?null:phone,p_address:addressId?null:address,
+        p_note:$('catPurchaseEditNote').value.trim()||null
+      });
+      modal.remove();
+      await renderPurchases();
+    }catch(err){status.textContent='修改失敗：'+err.message;status.className='message error';saving=false;b.disabled=false;}
+  };
+}
 async function renderPurchases(){
   var area=$('catalogCustomerArea');area.innerHTML='<div class="catalog-empty">正在載入採購紀錄…</div>';
   var result=await Promise.all([
@@ -1335,12 +1489,18 @@ async function renderPurchases(){
     return '<details class="catalog-myorder" data-detail-type="'+type+'" data-detail-id="'+esc(id)+'" style="margin-bottom:9px"><summary style="cursor:pointer;list-style:none;padding:5px 0"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><div><b>'+esc(number)+'</b> <span class="catalog-pill">'+esc(status)+'</span><div class="muted">'+esc(date)+'｜收貨：'+esc(receiver||'—')+'</div><b>'+money(total)+'</b></div><span style="font-size:13px;color:#087e77">查看明細 ▾</span></div></summary><div class="catalog-purchase-detail" style="border-top:1px solid #ddd;margin-top:9px;padding-top:10px">'+(extra||'')+'<div class="muted">展開後載入商品明細…</div></div></details>';
   }
   var html=purchases.map(function(p){
-    return summary('PUR',p.id,'PUR-'+String(p.request_no).padStart(6,'0'),p.status==='pending'?'等待確認':p.status==='approved'?'已確認':'已退回',fmtDate(p.created_at),p.total,p.receiver,p.status==='rejected'?'<div class="muted">退回原因：'+esc(p.review_note||'—')+'</div>':'');
+    return summary('PUR',p.id,'PUR-'+String(p.request_no).padStart(6,'0'),p.status==='pending'?'等待確認':p.status==='approved'?'已確認':'已退回',fmtDate(p.created_at),p.total,p.receiver,p.status==='rejected'?'<div class="muted">退回原因：'+esc(p.review_note||'—')+'</div>':p.status==='pending'?'<div style="margin-top:12px"><button type="button" class="btn secondary" data-customer-edit-purchase="'+esc(p.id)+'">修改訂購單（尚未審核）</button></div>':'');
   }).join('')+orders.map(function(o){
     var status=({vendor_unconfirmed:'訂單處理中',vendor_confirmed:'訂單已確認',new:'訂單處理中',preparing:'備貨中',shipped:'已出貨',completed:'已完成',cancelled:'已取消',out_of_stock:'暫時缺貨',delayed:'出貨延後'})[o.status]||'訂單處理中';
     return summary('ORD',o.id,'ORD-'+String(o.tracking_id).padStart(6,'0'),status,'下單 '+o.order_date+'｜預計 '+(o.expected_deadline||'—'),o.order_total,o.receiver);
   }).join('');
   area.innerHTML='<div class="card inner-card"><h2>我的採購</h2><p class="muted">可按狀態、編號或收貨人查詢；點訂單展開商品、規格、數量與金額。</p><div class="catalog-purchase-filters"><input id="catPurchaseSearch" placeholder="搜尋 PUR／ORD 編號或收貨人" aria-label="搜尋採購單"><select id="catPurchaseStatus" aria-label="篩選採購狀態"><option value="">全部狀態</option><option value="pending">待確認</option><option value="approved">已確認／正式訂單</option><option value="rejected">已退回</option></select><button type="button" class="btn ghost" id="catPurchaseExpand">全部展開</button></div><div id="catPurchaseCounter" class="muted"></div>'+(html||'<div class="catalog-empty">尚無採購紀錄。</div>')+'</div>';
+  area.onclick=function(e){
+    var edit=e.target.closest('[data-customer-edit-purchase]');if(!edit)return;
+    e.preventDefault();e.stopPropagation();
+    edit.disabled=true;
+    openCustomerPurchaseEditor(edit.dataset.customerEditPurchase).catch(function(err){alert('無法開啟採購單修改：'+err.message);edit.disabled=false;});
+  };
   area.querySelectorAll('details[data-detail-id]').forEach(function(d){
     var token=(d.querySelector('summary')?.textContent||'').toLowerCase();
     d.dataset.searchText=token;
