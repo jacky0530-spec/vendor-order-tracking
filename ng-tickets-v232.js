@@ -161,6 +161,7 @@ async function openIssueEditor(current,customers,container){
    '<label class="span2">問題內容<textarea id="issueDesc" rows="5" maxlength="10000" placeholder="問題內容、商品名稱、數量或缺貨情況">'+esc(current&&current.description||'')+'</textarea></label>'+
    '<label class="span2">備註／處理說明<textarea id="issueNotes" rows="4" maxlength="10000" placeholder="廠商回覆、預計處理方式、補寄或扣款情況">'+esc(current&&current.internal_notes||'')+'</textarea></label>'+
    '<label class="issue-finish-check"><input type="checkbox" id="issueCompleted" '+(current&&current.is_completed?'checked':'')+'> 此案件已完成</label>'+
+   '<label>完成日期 <span class="muted">（完成時記錄）</span><input type="date" id="issueCompleteDate" value="'+esc(current&&current.completed_at?new Date(new Date(current.completed_at).getTime()+8*3600000).toISOString().slice(0,10):'')+'"></label>'+
    '</div>'+
    '<div class="catalog-block"><h3>照片／影片附件</h3>'+
    '<input id="issuePickFiles" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime,video/webm" multiple hidden>'+
@@ -266,6 +267,8 @@ async function openIssueEditor(current,customers,container){
      notice.className='message error';notice.textContent='請填寫登記日期、主要人、問題類型及問題內容。';return;
    }
    var completed=$('issueCompleted').checked;
+   var finishDate=$('issueCompleteDate').value||today();
+   if(completed&&!/^\\d{4}-\\d{2}-\\d{2}$/.test(finishDate))throw Error('請輸入正確的完成日期');
    var values={
      case_date:date,status:$('issueStatus').value,primary_person:primary,
      secondary_person:$('issueSecondary').value.trim()||null,
@@ -274,7 +277,7 @@ async function openIssueEditor(current,customers,container){
      order_reference:$('issueOrder').value.trim()||null,
      subject:$('issueSubject').value.trim()||description.slice(0,80),
      description:description,internal_notes:$('issueNotes').value.trim()||null,
-     is_completed:completed,completed_at:completed?(currentTicket&&currentTicket.completed_at||new Date().toISOString()):null,
+     is_completed:completed,completed_at:completed?(currentTicket&&currentTicket.completed_at&&new Date(new Date(currentTicket.completed_at).getTime()+8*3600000).toISOString().slice(0,10)===finishDate?currentTicket.completed_at:new Date(finishDate+'T12:00:00+08:00').toISOString()):null,
      updated_at:new Date().toISOString()
    };
    busy=true;$('issueSave').disabled=true;$('issueCancel').disabled=true;
