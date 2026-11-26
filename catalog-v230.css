@@ -371,3 +371,47 @@ header.topbar #catalogCustomerNav button.active{background:#0f766e;border-color:
 .cat-quick-publish-row .cat-publish-off{border:1px solid #b42318;color:#b42318;background:white}
 .cat-quick-publish-row .cat-publish-off:hover{background:#fff1f1}
 .cat-quick-publish-row .btn:disabled{opacity:.55;cursor:wait}
+
+
+/* V2.89: Keep 新增商品 reachable while scrolling the product management page.
+   Hide it whenever the catalog or 商品管理 section is not active. */
+#tab-catalog #catNewProduct{
+  position:fixed;
+  top:var(--cat-float-top,88px);
+  right:max(16px,calc((100vw - 1340px)/2 + 20px));
+  z-index:100;
+  min-height:46px;
+  padding:10px 16px;
+  border-radius:999px;
+  white-space:nowrap;
+  box-shadow:0 5px 20px rgba(4,75,65,.28);
+}
+#tab-catalog.hidden #catNewProduct,
+#tab-catalog:not(.cat-products-active) #catNewProduct,
+#adminView.hidden #catNewProduct{display:none!important}
+#tab-catalog #catNewProduct:focus-visible{outline:3px solid #7cddd0;outline-offset:3px}
+
+/* Same numeric entry rules for customers ordering and editing pending purchases. */
+#catStoreModal input.cat-direct-numeric,
+#catPurchaseEditModal input.cat-direct-numeric{
+  width:100%;
+  min-height:45px;
+  font-size:16px;
+  font-variant-numeric:tabular-nums;
+  touch-action:manipulation;
+}
+#catStoreModal input.cat-direct-numeric:focus,
+#catPurchaseEditModal input.cat-direct-numeric:focus{
+  border-color:#087f72;
+  outline:2px solid rgba(8,127,114,.25);
+  outline-offset:1px;
+}
+#catStoreModal input.cat-direct-numeric[aria-invalid="true"],
+#catPurchaseEditModal input.cat-direct-numeric[aria-invalid="true"]{border-color:#d92d20}
+@media(max-width:640px){
+  #tab-catalog #catNewProduct{
+    right:12px;
+    padding:10px 14px;
+    font-size:14px;
+  }
+}
