@@ -258,7 +258,8 @@ function renderAdminProducts(view){
   var archiveCount=state.products.filter(function(p){return !!p.archived_at;}).length;
   var cards=state.products.map(function(p){
     var im=firstImage(p.id),n=state.images.filter(function(x){return x.product_id===p.id;}).length;
-    var archived=!!p.archived_at;
+    var archived=!!p.archived_at,currentlyForSale=saleOpen(p),quickPublish=!currentlyForSale;
+    var quickLabel=currentlyForSale?'下架商品':p.published?'重新上架':'立即上架';
     return '<div class="catalog-card" data-cat-product-id="'+esc(p.id)+'"><div class="catalog-card-img">'+
       (im?'<img src="'+esc(publicImage(im.storage_path))+'" alt="">':'<span class="muted">尚無圖片</span>')+
       '</div><div class="catalog-card-body"><div class="catalog-code">'+esc(p.product_code)+'</div>'+
@@ -269,10 +270,10 @@ function renderAdminProducts(view){
       '<span class="catalog-pill">'+n+' 張圖</span><span class="catalog-pill">'+
       esc(p.visibility_mode==='all'?'全部客戶':'指定販售')+'</span></div>'+
       (archived?'<div class="muted" style="font-size:12px">刪除時間：'+esc(fmtDate(p.archived_at))+'</div>':'')+
-      (archived?'':'<div class="cat-quick-publish-row"><button type="button" class="btn '+(p.published?'ghost cat-publish-off':'primary cat-publish-on')+
-         '" data-cat-quick-publish="'+esc(p.id)+'" data-cat-publish-target="'+(p.published?'0':'1')+
-         '" aria-label="'+esc(p.product_code+' '+(p.published?'下架':'立即上架'))+'">'+
-         (p.published?'下架商品':'立即上架')+'</button></div>')+
+      (archived?'':'<div class="cat-quick-publish-row"><button type="button" class="btn '+(quickPublish?'primary cat-publish-on':'ghost cat-publish-off')+
+         '" data-cat-quick-publish="'+esc(p.id)+'" data-cat-publish-target="'+(quickPublish?'1':'0')+
+         '" aria-label="'+esc(p.product_code+' '+(quickPublish?'上架':'下架'))+'">'+
+         quickLabel+'</button></div>')+
       '<div class="catalog-card-actions">'+(archived?
         btn('還原為草稿','btn secondary','data-cat-restore="'+esc(p.id)+'"'):
         btn('編輯','btn secondary','data-cat-edit="'+esc(p.id)+'"')+
