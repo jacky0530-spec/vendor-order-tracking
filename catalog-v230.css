@@ -511,3 +511,21 @@ header.topbar #catalogCustomerNav button.active{background:#0f766e;border-color:
  .cat-line-item{align-items:flex-start}
  .cat-line-thumb{width:70px;height:70px}
 }
+
+
+/* V2.92: dedicated LINE Official Account bot setup inside DM manager */
+.cat-line-setup{
+  padding:14px 16px;margin:14px 0 18px;
+  background:#f2f8f5;border:1px solid #bedcd2;border-radius:12px;
+  color:#23473e;font-size:14px;line-height:1.65;
+}
+.cat-line-setup p{margin:9px 0}
+.cat-line-setup a{color:#087f72;text-decoration:underline}
+.cat-line-webhook{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.cat-line-webhook code{background:#fff;padding:10px;border-radius:7px;border:1px solid #d0ded8;
+  flex:1;min-width:0;overflow-wrap:anywhere;user-select:all;font-size:12px}
+.cat-line-webhook button{min-height:40px}
+@media(max-width:550px){
+ .cat-line-webhook{flex-direction:column;align-items:stretch}
+ .cat-line-webhook code{width:100%}
+}
