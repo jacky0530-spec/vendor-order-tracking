@@ -904,7 +904,10 @@ function renderPendingProductImages(message){
 function validProductImage(file){
   if(!file||!file.size)throw new Error('有一張圖片是空檔案。');
   if(file.size>20*1024*1024)throw new Error((file.name||'圖片')+' 超過 20MB，未加入。');
-  if(!/^image\/(jpeg|png|webp|gif)$/i.test(file.type||'')&&!/\.(jpe?g|png|webp|gif)$/i.test(file.name||''))
+  var mime=String(file.type||'').toLowerCase();
+  var nameOk=/\.(jpe?g|png|webp|gif)$/i.test(file.name||'');
+  var mimeOk=/^image\/(jpeg|png|webp|gif)$/.test(mime);
+  if((mime&&mime!=='application/octet-stream'&&!mimeOk)||(!mimeOk&&!nameOk))
     throw new Error((file.name||'檔案')+' 不是支援的圖片格式（JPG、PNG、WEBP、GIF）。');
 }
 function addPendingProductImages(files,source){
@@ -912,6 +915,17 @@ function addPendingProductImages(files,source){
   Array.from(files||[]).forEach(function(file){
     try{
       validProductImage(file);
+      var mime=String(file.type||'').toLowerCase();
+      if(!/^image\/(jpeg|png|webp|gif)$/.test(mime)){
+        var extension=(file.name||'').match(/\.(jpe?g|png|webp|gif)$/i);
+        var ext=extension[1].toLowerCase();
+        var inferred=(ext==='jpg'||ext==='jpeg')?'image/jpeg':'image/'+ext;
+        file=new File([file],file.name,{type:inferred,lastModified:file.lastModified||Date.now()});
+      }
+      if(!/\.(jpe?g|png|webp|gif)$/i.test(file.name||'')){
+        var suffix={'image/jpeg':'jpg','image/png':'png','image/webp':'webp','image/gif':'gif'}[file.type];
+        file=new File([file],'LINE_照片_'+Date.now()+'_'+(pendingImageSequence+1)+'.'+suffix,{type:file.type});
+      }
       if(pendingProductImages.length>=80)throw new Error('單次最多保留 80 張待上傳照片。');
       if(pendingProductImages.some(function(x){
         return x.file.name===file.name&&x.file.size===file.size&&x.file.lastModified===file.lastModified;
