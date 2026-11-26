@@ -18,7 +18,7 @@ https://jacky0530-spec.github.io/vendor-order-tracking/
 - GitHub：`jacky0530-spec/vendor-order-tracking`，GitHub Pages 靜態網站。
 - Supabase 專案：`qibeuakrryqjaiwbcorg`。
 - **V2.92 已改為獨立的「宜羿新品通知」官方帳號**：新品系統使用 `catalog-line-webhook` 與 `LINE_CATALOG_CHANNEL_ACCESS_TOKEN` / `LINE_CATALOG_CHANNEL_SECRET`；原有 `line-webhook`、`LINE_CHANNEL_ACCESS_TOKEN`、`LINE_CHANNEL_SECRET` 只服務訂單匯入，避免混用。
-- LINE 已有的訂單 Webhook 及 `line-worker` 保留，不新建第二個競爭的 Webhook URL。
+- **V2.92 修訂：**LINE 訂單匯入的 `line-webhook` / `line-worker` 保留，新品官方帳號另設獨立的 `catalog-line-webhook`，兩個不同 Messaging API Channels 各自只有一個 Webhook URL。
 - Supabase Cron（pg_cron、pg_net）每分鐘喚醒新的 Edge Function。
 
 ## GitHub 修改清單
@@ -26,7 +26,7 @@ https://jacky0530-spec.github.io/vendor-order-tracking/
 - `catalog-line-dm-v291.js`：獨立管理模組，讀取已標記的新商品、LINE 群組及近期排程；Canvas 生成完整 PNG DM 及小尺寸 JPEG 預覽；管理者排程、取消及查詢歷史。
 - `catalog-v230.css`：管理頁、選品、群組、DM 預覽及行動裝置排版。
 - `index.html`、`admin-tools-v228.js`：統一 V2.91 顯示版號及 JS/CSS 快取參數。
-- `supabase/functions/line-webhook/index.ts`：原訂單 Webhook 保留，額外處理 LINE 簽章驗證後的群組 join/message/leave 事件，新增群組一律 `active=false`，由管理者自行啟用；離群自動停用。
+- `supabase/functions/catalog-line-webhook/index.ts`：獨立新品機器人的專用 Webhook，驗證此頻道的簽章後才處理群組 join/message/leave 事件。新增群組一律 `active=false`，由管理者自行啟用；離群自動停用。舊 `line-webhook` 只處理訂單。
 - `supabase/functions/catalog-line-dispatch/index.ts`：獨立排程發送器，沒有前端可用的 service key。
 
 ## Supabase 資料庫
@@ -79,7 +79,7 @@ https://jacky0530-spec.github.io/vendor-order-tracking/
 - **不得**將 LINE Channel Secret、Access Token、service-role key 或 Vault token 提交到 GitHub。
 
 ## 啟用步驟
-1. LINE Developers 針對現有的 LINE 官方帳號啟用 `Allow bot to join group chats`，確保 Webhook URL 仍為既有 `line-webhook`。
+1. 建立專用的「宜羿新品通知」LINE 官方帳號並啟用 Messaging API，在新頻道啟用 `Allow bot to join group chats`，Webhook URL 設為新 `catalog-line-webhook`；切勿修改原訂單機器人的 Webhook。
 2. 邀請現有官方帳號機器人加入測試私人群組；若機器人已在群內，請群組成員傳送一則訊息以觸發群組登錄。
 3. 進入管理員「批發商城 → LINE 新品推播」，點選「啟用推播」（預設不啟用）。
 4. 新增或上架一件公開販售商品並上傳商品照片；在新品清單選取商品。
