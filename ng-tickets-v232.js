@@ -90,11 +90,11 @@ async function render(mode,container){
      '<div class="issue-summary">共 '+total+' 筆｜未完成 '+(total-completed)+' 筆｜已完成 '+completed+' 筆</div>'+
      '<div class="issue-filters"><input type="search" id="issueSearch" placeholder="搜尋主要人、次要人、問題內容、類型、單號">'+
      '<select id="issueStatusFilter"><option value="">全部案件狀態</option>'+issueStatuses.map(function(x){return '<option value="'+x[0]+'">'+x[1]+'</option>';}).join('')+'</select>'+
-     '<select id="issueCompleteFilter"><option value="active">未完成優先</option><option value="all">全部案件</option><option value="done">已完成</option></select></div>'+
+     '<select id="issueCompleteFilter"><option value="active">只顯示未完成</option><option value="all">全部案件</option><option value="done">已完成</option></select></div>'+
      '<div id="issueRows">'+(tickets.map(function(t){
        var c=byCustomer.get(t.customer_id);
        var main=t.primary_person||c&&c.name||'未填主要人';
-       var label=t.is_completed?'已完成':statusLabel(t.status);
+       var label=t.is_completed?'已完成｜'+statusLabel(t.status):statusLabel(t.status);
        var search=['PN-'+String(t.ticket_number).padStart(6,'0'),t.primary_person,t.secondary_person,
          t.issue_type,t.description,t.subject,t.product_code,t.order_reference,c&&c.customer_code,c&&c.name,t.internal_notes].join(' ').toLowerCase();
        return '<article class="issue-list-card" data-issue-search="'+esc(search)+'" data-issue-status="'+esc(t.status)+'" data-issue-complete="'+(t.is_completed?'1':'0')+'">'+
