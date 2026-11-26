@@ -263,3 +263,33 @@ header.topbar #catalogCustomerNav button.active{background:#0f766e;border-color:
   #catProductModal .cat-image-dropzone{padding:20px 12px}
   #catProductModal .cat-image-dropzone-title{font-size:15px}
 }
+
+
+/* V2.84 — customer changes pending PUR before manager approval */
+#catPurchaseEditModal .cat-purchase-edit-modal{width:min(1040px,100%);max-height:94vh}
+#catPurchaseEditModal .cat-purchase-edit-row{
+ display:grid;grid-template-columns:minmax(170px,2fr) minmax(150px,1.3fr) 110px 120px auto;
+ gap:9px;align-items:end;border:1px solid #e2e8f0;border-radius:10px;
+ padding:12px;margin-bottom:9px;min-width:0
+}
+#catPurchaseEditModal .cat-purchase-edit-row label{font-size:13px;min-width:0}
+#catPurchaseEditModal .cat-purchase-edit-row input,
+#catPurchaseEditModal .cat-purchase-edit-row select{min-height:39px;margin-top:5px;width:100%}
+#catPurchaseEditModal .cat-purchase-edit-name{font-size:14px;line-height:1.5;min-width:0;overflow-wrap:anywhere}
+#catPurchaseEditModal .cat-purchase-edit-subtotal{font-weight:800;color:#334155;text-align:right;padding-bottom:10px;white-space:nowrap}
+#catPurchaseEditModal .cat-purchase-edit-total{margin:12px 0;text-align:right;font-weight:800;font-size:15px}
+#catPurchaseEditModal .cat-purchase-edit-actions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin-top:16px}
+#catPurchaseEditModal .cat-purchase-edit-actions .btn{min-height:44px}
+@media(max-width:800px){
+ #catPurchaseEditModal .cat-purchase-edit-row{
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+ }
+ #catPurchaseEditModal .cat-purchase-edit-name{grid-column:1/-1}
+ #catPurchaseEditModal .cat-purchase-edit-subtotal{text-align:left}
+ #catPurchaseEditModal .cat-purchase-edit-actions .btn{flex:1}
+}
+@media(max-width:480px){
+ #catPurchaseEditModal .cat-purchase-edit-row{grid-template-columns:minmax(0,1fr)}
+ #catPurchaseEditModal .cat-purchase-edit-name{grid-column:auto}
+ #catPurchaseEditModal .cat-purchase-edit-subtotal{text-align:right}
+}
