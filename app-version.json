@@ -1,0 +1,6 @@
+{
+  "version": "V2.95",
+  "build": "295-version-sync",
+  "published_at": "2026-11-27",
+  "description": "Sync version badge, document title, footer and detect new builds"
+}
