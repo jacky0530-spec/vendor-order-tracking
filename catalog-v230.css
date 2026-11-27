@@ -607,3 +607,44 @@ header.topbar #catalogCustomerNav button.active{background:#0f766e;border-color:
   .cat-line-group-scroll .cat-line-group-compact{flex-direction:row;align-items:center;padding:8px;gap:7px}
   .cat-line-group-scroll .cat-line-group-compact .btn{min-height:32px;padding:5px 8px;font-size:12px;width:auto}
 }
+
+
+/* V2.96: Multi-select LINE delivery groups, compact even with 100+ groups. */
+.cat-line-target-field{min-width:0;display:flex;flex-direction:column;gap:7px}
+.cat-line-target-label{font-size:13px;font-weight:650;color:#344054}
+.cat-line-target-bar{min-height:43px;display:flex;align-items:center;gap:8px;
+  border:1px solid #cbd5d1;background:#fff;border-radius:9px;padding:5px 7px 5px 12px}
+.cat-line-target-summary{min-width:0;flex:1 1 auto;font-size:13px;color:#344054;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cat-line-target-bar .btn{min-height:34px;flex:0 0 auto;padding:6px 11px;font-size:12px}
+.cat-line-target-panel{border:1px solid #d5e3dd;background:#f8fbfa;padding:10px;
+  border-radius:10px;min-width:0}
+.cat-line-target-panel.hidden{display:none!important}
+.cat-line-form .cat-line-target-panel input[type=search]{width:100%;min-height:40px;
+  border:1px solid #cbd5d1;border-radius:7px;background:#fff;padding:8px 11px;font-size:14px}
+.cat-line-target-actions{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:8px 0}
+.cat-line-target-actions .btn{font-size:12px;min-height:34px;padding:5px 9px}
+.cat-line-target-count{font-size:12px;margin:4px 0 7px}
+.cat-line-target-options{max-height:230px;overflow-y:auto;overscroll-behavior:contain;
+  scrollbar-gutter:stable;min-height:0;padding-right:3px}
+.cat-line-form .cat-line-target-option{
+  display:flex;flex-direction:row;align-items:center;gap:8px;
+  border:1px solid #e1e8e4;border-radius:7px;background:#fff;
+  padding:9px 10px;margin-bottom:5px;min-height:40px;
+  font-size:13px;font-weight:500;cursor:pointer
+}
+.cat-line-target-option:last-child{margin-bottom:0}
+.cat-line-form .cat-line-target-option input[type=checkbox]{
+  flex:0 0 auto;width:18px;min-width:18px;height:18px;min-height:18px;
+  padding:0;margin:0;accent-color:#087f72
+}
+.cat-line-target-option-name{flex:1 1 auto;min-width:0;overflow-wrap:anywhere;font-weight:600}
+.cat-line-target-option .muted{font-size:11px;white-space:nowrap;flex-shrink:0}
+.cat-line-target-empty{padding:10px;margin:0;line-height:1.5}
+@media(max-width:640px){
+  .cat-line-target-bar{padding:5px 6px 5px 9px}
+  .cat-line-target-bar .btn{min-height:35px;font-size:12px;padding:5px 8px}
+  .cat-line-target-options{max-height:210px}
+  .cat-line-form .cat-line-target-option{padding:9px 7px;gap:6px}
+  .cat-line-target-option .muted{display:none}
+}
