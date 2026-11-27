@@ -3,7 +3,7 @@
 var CFG=window.APP_CONFIG||{},BASE=CFG.SUPABASE_URL,KEY=CFG.SUPABASE_PUBLISHABLE_KEY;
 var ORIGIN='https://jacky0530-spec.github.io/vendor-order-tracking/';
 var rootId='catAdminLinePush';
-var model={products:[],groups:[],jobs:[],images:[],selected:new Set(),ready:false,groupPanelOpen:false,groupFilter:''};
+var model={products:[],groups:[],jobs:[],images:[],selected:new Set(),ready:false,groupPanelOpen:false,groupFilter:'',selectedGroupIds:new Set(),targetPanelOpen:false,targetFilter:''};
 function $(id){return document.getElementById(id);}
 function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
 function session(){try{return JSON.parse(localStorage.getItem('vendor_order_session')||'null');}catch(e){return null;}}
@@ -55,6 +55,8 @@ async function reload(){
   model.products=products||[];model.groups=groups||[];model.jobs=jobs||[];model.images=images||[];
   var now=Date.now(),available=new Set(model.products.filter(function(p){return readyProduct(p,now);}).map(function(p){return p.id;}));
   model.selected=new Set([...model.selected].filter(function(id){return available.has(id);}));
+  var availableGroups=new Set(model.groups.filter(function(g){return g.active&&g.connected;}).map(function(g){return g.id;}));
+  model.selectedGroupIds=new Set([...model.selectedGroupIds].filter(function(id){return availableGroups.has(id);}));
 }
 function groupList(){
   var el=$('catLineGroups');if(!el)return;
@@ -126,12 +128,78 @@ function setupGroupPanel(){
   };
   sync();
 }
+
+function activeTargetGroups(){
+  return model.groups.filter(function(g){return g.active&&g.connected;});
+}
+function filteredTargetGroups(){
+  var keyword=(model.targetFilter||'').normalize('NFKC').trim().toLocaleLowerCase('zh-TW');
+  return activeTargetGroups().filter(function(g){
+    return !keyword||(String(g.group_name||'')+' '+String(g.line_group_id||''))
+      .normalize('NFKC').toLocaleLowerCase('zh-TW').includes(keyword);
+  });
+}
 function refreshGroupSelect(){
-  var el=$('catLineTarget');if(!el)return;
-  var prev=el.value;
-  var options=model.groups.filter(function(g){return g.active&&g.connected;});
-  el.innerHTML='<option value="">請選擇已啟用的群組</option>'+
-    options.map(function(g){return '<option value="'+esc(g.id)+'" '+(prev===g.id?'selected':'')+'>'+esc(g.group_name)+'</option>';}).join('');
+  var list=$('catLineTargetOptions'),summary=$('catLineTargetSummary');
+  if(!list||!summary)return;
+  var eligible=activeTargetGroups(),filtered=filteredTargetGroups();
+  var selected=eligible.filter(function(g){return model.selectedGroupIds.has(g.id);});
+  var total=model.selectedGroupIds.size;
+  var sample=selected.slice(0,2).map(function(g){return g.group_name;}).join('、');
+  summary.textContent=total?'已選 '+total+' 群：'+sample+(selected.length>2?' 等':''):'尚未選擇發送群組';
+  var count=$('catLineTargetResultCount');
+  if(count)count.textContent='符合 '+filtered.length+' / '+eligible.length+' 群｜已選 '+total+' 群';
+  var selectAll=$('catLineTargetSelectAll');
+  if(selectAll)selectAll.disabled=filtered.length===0;
+  var clear=$('catLineTargetClear');
+  if(clear)clear.disabled=total===0;
+  list.innerHTML=filtered.length?filtered.map(function(g){
+    return '<label class="cat-line-target-option"><input type="checkbox" data-line-target="'+esc(g.id)+'" '+
+      (model.selectedGroupIds.has(g.id)?'checked':'')+
+      '><span class="cat-line-target-option-name">'+esc(g.group_name)+'</span>'+
+      '<span class="muted">尾碼 '+esc(g.line_group_id.slice(-6))+'</span></label>';
+  }).join(''):(eligible.length?
+    '<p class="muted cat-line-target-empty">沒有符合搜尋條件的群組。</p>':
+    '<p class="muted cat-line-target-empty">沒有已啟用的群組，請先到上方私人 LINE 群組管理啟用推播。</p>');
+  list.querySelectorAll('[data-line-target]').forEach(function(input){
+    input.onchange=function(){
+      if(input.checked)model.selectedGroupIds.add(input.dataset.lineTarget);
+      else model.selectedGroupIds.delete(input.dataset.lineTarget);
+      refreshGroupSelect();
+    };
+  });
+}
+function setupTargetGroups(){
+  var toggle=$('catLineTargetToggle'),panel=$('catLineTargetPanel'),
+      search=$('catLineTargetSearch'),all=$('catLineTargetSelectAll'),
+      clear=$('catLineTargetClear');
+  if(!toggle||!panel||!search||!all||!clear)return;
+  function sync(){
+    panel.classList.toggle('hidden',!model.targetPanelOpen);
+    toggle.setAttribute('aria-expanded',model.targetPanelOpen?'true':'false');
+    toggle.textContent=model.targetPanelOpen?'收合群組選擇':'勾選發送群組';
+    search.value=model.targetFilter;
+  }
+  toggle.onclick=function(){
+    model.targetPanelOpen=!model.targetPanelOpen;
+    sync();
+    if(model.targetPanelOpen)search.focus();
+  };
+  search.oninput=function(){
+    model.targetFilter=search.value;
+    refreshGroupSelect();
+  };
+  all.onclick=function(){
+    // Select only groups matching the current search. Existing selections remain.
+    filteredTargetGroups().forEach(function(g){model.selectedGroupIds.add(g.id);});
+    refreshGroupSelect();
+  };
+  clear.onclick=function(){
+    model.selectedGroupIds.clear();
+    refreshGroupSelect();
+  };
+  sync();
+  refreshGroupSelect();
 }
 function renderProducts(){
   var el=$('catLineProducts');if(!el)return;
@@ -285,10 +353,14 @@ async function preview(){
   return {canvas:canvas,blob:file,previewBlob:thumb};
 }
 async function schedule(){
-  var products=getSelected(),group=$('catLineTarget').value,date=$('catLineSchedule').value,
+  var products=getSelected(),groups=[...model.selectedGroupIds],date=$('catLineSchedule').value,
       intro=$('catLineIntro').value.trim();
   if(!products.length)throw new Error('請先選擇要推播的商品');
-  if(!group)throw new Error('請先選擇已啟用的 LINE 群組');
+  if(!groups.length)throw new Error('請先勾選至少 1 個已啟用的 LINE 群組');
+  if(groups.length>100)throw new Error('一次最多選取 100 個 LINE 群組');
+  var eligibleGroups=new Set(activeTargetGroups().map(function(g){return g.id;}));
+  if(groups.some(function(id){return !eligibleGroups.has(id);}))
+    throw new Error('部分群組已停用或離開，請重新整理群組清單');
   if(!date)throw new Error('請選擇發送日期與時間');
   var scheduled=new Date(date+':00+08:00');
   if(isNaN(scheduled.getTime())||scheduled.getTime()<Date.now()+30000)
@@ -296,8 +368,13 @@ async function schedule(){
   if(scheduled.getTime()>Date.now()+90*86400000)throw new Error('最多只能排程未來 90 天');
   if(!products.every(function(p){return readyProduct(p,scheduled.getTime());}))
     throw new Error('選取商品有已結單、未上架或不公開的商品');
-  if(!confirm('確定排程發送 '+products.length+' 件商品至 LINE 群組？\n時間：'+fmt(scheduled.toISOString())+
-    '\n商品：'+products.map(function(x){return x.product_code;}).join('、')))return false;
+  var names=groups.map(function(id){var g=model.groups.find(function(x){return x.id===id;});return g?g.group_name:'群組';});
+  var message='確定將同一張 DM 推播至 '+groups.length+' 個 LINE 群組？'+
+    '\n時間：'+fmt(scheduled.toISOString())+
+    '\n商品：'+products.map(function(x){return x.product_code;}).join('、')+
+    '\n群組：'+names.slice(0,8).join('、')+(names.length>8?' 等 '+names.length+' 群':'')+
+    '\n\n每個群組將各建立 1 筆排程，可能依收件人數計入 LINE 官方訊息額度。';
+  if(!confirm(message))return false;
   var result=await preview(),uuid=crypto.randomUUID(),owner=session()?.user?.id;
   if(!owner)throw new Error('登入資料已過期');
   var path=owner+'/'+uuid+'.png',previewPath=owner+'/'+uuid+'-preview.jpg';
@@ -313,12 +390,15 @@ async function schedule(){
       'Content-Type':'image/jpeg','x-upsert':'false'},body:result.previewBlob
   });
   if(!previewRes.ok)throw new Error('LINE 縮圖上傳失敗：'+(await previewRes.text()).slice(0,250));
-  await rpc('catalog_line_schedule_push',{
-    p_group_id:group,p_product_ids:products.map(function(p){return p.id;}),
+  var created=await rpc('catalog_line_schedule_push_multi',{
+    p_group_ids:groups,p_product_ids:products.map(function(p){return p.id;}),
     p_scheduled_at:scheduled.toISOString(),p_dm_storage_path:path,p_preview_storage_path:previewPath,
     p_intro:intro,p_mall_url:ORIGIN
   });
-  await reload();renderJobs();setStatus('已建立排程：'+fmt(scheduled.toISOString())+'，到時間會由 LINE 機器人發送 DM 與商城網址。');
+  if(!Array.isArray(created)||created.length!==groups.length)
+    throw new Error('排程結果未能核對，請先檢查發送紀錄，避免重複建立');
+  await reload();renderJobs();refreshGroupSelect();
+  setStatus('已為 '+created.length+' 個群組建立排程（同一張 DM）。發送時間：'+fmt(scheduled.toISOString())+'。');
   return true;
 }
 async function render(){
@@ -347,7 +427,17 @@ async function render(){
       '<div class="muted cat-line-result-summary" id="catLineResultSummary"></div>'+
       '<div class="cat-line-products" id="catLineProducts"></div>'+
       '<h4>3．設定推播時間及文字</h4>'+
-      '<div class="cat-line-form"><label>發送群組<select id="catLineTarget"></select></label>'+
+      '<div class="cat-line-form"><div class="cat-line-target-field">'+
+      '<span class="cat-line-target-label">發送群組（可複選）</span>'+
+      '<div class="cat-line-target-bar"><span id="catLineTargetSummary" class="cat-line-target-summary">尚未選擇發送群組</span>'+
+      '<button type="button" class="btn secondary" id="catLineTargetToggle" aria-expanded="false" aria-controls="catLineTargetPanel">勾選發送群組</button></div>'+
+      '<div id="catLineTargetPanel" class="cat-line-target-panel hidden">'+
+      '<input type="search" id="catLineTargetSearch" placeholder="搜尋群組名稱或編號" aria-label="搜尋發送群組" autocomplete="off">'+
+      '<div class="cat-line-target-actions"><button type="button" class="btn ghost" id="catLineTargetSelectAll">全選搜尋結果</button>'+
+      '<button type="button" class="btn ghost" id="catLineTargetClear">清除全部</button></div>'+
+      '<div id="catLineTargetResultCount" class="muted cat-line-target-count"></div>'+
+      '<div id="catLineTargetOptions" class="cat-line-target-options" role="group" aria-label="選擇 LINE 發送群組" tabindex="0"></div>'+
+      '</div></div>'+
       '<label>台灣時間（UTC+8）<input type="datetime-local" id="catLineSchedule"></label>'+
       '<label class="full">商品訊息說明<textarea id="catLineIntro" rows="3" maxlength="250">🆕 宜羿商城新品上架！點擊連結查看商品詳情並下單。</textarea></label>'+
       '<label class="full">商城連結（固定網址）<input value="'+esc(ORIGIN)+'" readonly></label></div>'+
@@ -363,7 +453,7 @@ async function render(){
       catch(e){setStatus('自動複製失敗，請手動選取 Webhook 網址',true);}
     };
     $('catLineSchedule').value=localTaipei(15);
-    setupGroupPanel();groupList();refreshGroupSelect();renderProducts();renderJobs();
+    setupGroupPanel();groupList();setupTargetGroups();renderProducts();renderJobs();
     $('catLineSearch').addEventListener('input',renderProducts);
     $('catLineClearSelected').onclick=function(){
       model.selected.clear();
