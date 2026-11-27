@@ -48,7 +48,7 @@ function setStatus(message,isError){var el=$('catLineStatus');if(!el)return;el.c
 async function reload(){
   var [products,groups,jobs,images]=await Promise.all([
     apiPaged('catalog_products?select=id,product_code,name,base_price,active,published,archived_at,visibility_mode,line_published_at,line_announced_at,sale_start_at,sale_end_at,updated_at&active=eq.true&published=eq.true&archived_at=is.null&visibility_mode=eq.all&order=updated_at.desc,id.desc'),
-    api('catalog_line_groups?select=*&order=last_seen_at.desc'),
+    apiPaged('catalog_line_groups?select=*&order=last_seen_at.desc,id.desc'),
     api('catalog_line_push_jobs?select=*&order=created_at.desc&limit=30'),
     apiPaged('catalog_product_images?select=product_id,storage_path,sort_order,id&order=sort_order.asc,id.asc')
   ]);
