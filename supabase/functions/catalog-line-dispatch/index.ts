@@ -29,7 +29,7 @@ function assetUrl(path:string){
 function isAvailable(p:any){
   const now=Date.now();
   return p&&p.active===true&&p.published===true&&p.archived_at==null&&
-    p.visibility_mode==='all'&&p.line_published_at!=null&&
+    p.visibility_mode==='all'&&
     (!p.sale_start_at||Date.parse(p.sale_start_at)<=now)&&
     (!p.sale_end_at||Date.parse(p.sale_end_at)>now);
 }
@@ -49,7 +49,7 @@ async function runJob(job:any){
     if(!Array.isArray(job.product_ids)||job.product_ids.length<1||job.product_ids.length>6)throw new Error('商品數量無效');
     if(!Array.isArray(job.product_snapshot)||job.product_snapshot.length!==job.product_ids.length)throw new Error('商品快照無效');
     const ids=job.product_ids.join(',');
-    const products=await db('catalog_products?select=id,product_code,name,base_price,active,published,archived_at,visibility_mode,line_published_at,sale_start_at,sale_end_at&id=in.('+ids+')');
+    const products=await db('catalog_products?select=id,product_code,name,base_price,active,published,archived_at,visibility_mode,sale_start_at,sale_end_at&id=in.('+ids+')');
     const byId=new Map((products||[]).map((p:any)=>[p.id,p]));
     for(const snap of job.product_snapshot){
       if(!job.product_ids.includes(snap.id)||!productStillSame(byId.get(snap.id),snap))
