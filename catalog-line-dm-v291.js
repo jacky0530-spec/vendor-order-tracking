@@ -163,6 +163,9 @@ function refreshGroupSelect(){
     '<p class="muted cat-line-target-empty">沒有已啟用的群組，請先到上方私人 LINE 群組管理啟用推播。</p>');
   list.querySelectorAll('[data-line-target]').forEach(function(input){
     input.onchange=function(){
+      if(input.checked&&model.selectedGroupIds.size>=100){
+        input.checked=false;setStatus('每次最多選擇 100 個 LINE 群組',true);return;
+      }
       if(input.checked)model.selectedGroupIds.add(input.dataset.lineTarget);
       else model.selectedGroupIds.delete(input.dataset.lineTarget);
       refreshGroupSelect();
@@ -190,9 +193,15 @@ function setupTargetGroups(){
     refreshGroupSelect();
   };
   all.onclick=function(){
-    // Select only groups matching the current search. Existing selections remain.
-    filteredTargetGroups().forEach(function(g){model.selectedGroupIds.add(g.id);});
+    // Select only matching groups; keep prior selections and enforce the 100-group backend limit.
+    var matches=filteredTargetGroups(),limited=false;
+    matches.forEach(function(g){
+      if(model.selectedGroupIds.has(g.id))return;
+      if(model.selectedGroupIds.size>=100){limited=true;return;}
+      model.selectedGroupIds.add(g.id);
+    });
     refreshGroupSelect();
+    if(limited)setStatus('已選滿 100 個 LINE 群組，請先清除部分選取再增加',true);
   };
   clear.onclick=function(){
     model.selectedGroupIds.clear();
