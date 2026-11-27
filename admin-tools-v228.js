@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = 'V2.95';
+  const VERSION = 'V2.96';
   let latestRelease = null;
   let lastVersionCheckAt = 0;
   let versionCheckPromise = null;
