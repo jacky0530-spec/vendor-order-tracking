@@ -1,7 +1,10 @@
 (() => {
   'use strict';
 
-  const VERSION = 'V2.94';
+  const VERSION = 'V2.95';
+  let latestRelease = null;
+  let lastVersionCheckAt = 0;
+  let versionCheckPromise = null;
   const CFG = window.APP_CONFIG || {};
   const SB = CFG.SUPABASE_URL;
   const KEY = CFG.SUPABASE_PUBLISHABLE_KEY;
@@ -101,6 +104,18 @@
     return p && (p.role === 'admin' || p.role === 'employee');
   }
 
+  function versionNumber(v) {
+    const m = /^V(\d+)\.(\d+)$/.exec(String(v || ''));
+    return m ? Number(m[1]) * 10000 + Number(m[2]) : -1;
+  }
+
+  function reloadLatestSite() {
+    const url = new URL(window.location.href);
+    url.searchParams.set('build', latestRelease?.build || '295-version-sync');
+    url.searchParams.set('refresh', String(Date.now()));
+    window.location.assign(url.href);
+  }
+
   function setVersion() {
     let chip = document.querySelector('.system-version-chip');
     if (!chip) {
@@ -109,9 +124,54 @@
       chip.style.cssText = 'display:inline-flex;position:fixed;right:16%;top:96px;z-index:50;padding:5px 10px;border:1px solid #b2ddff;background:#eff8ff;color:#175cd3;border-radius:999px;font-size:12px;font-weight:700';
       document.body.appendChild(chip);
     }
-    chip.textContent = `系統版本 ${VERSION}`;
+    const hasNewer = latestRelease && versionNumber(latestRelease.version) > versionNumber(VERSION);
+    chip.textContent = hasNewer
+      ? `系統版本 ${VERSION}｜新版 ${latestRelease.version}（點擊更新）`
+      : `系統版本 ${VERSION}`;
+    chip.style.cursor = 'pointer';
+    chip.setAttribute('role', 'button');
+    chip.setAttribute('tabindex', '0');
+    chip.title = hasNewer ? '點擊載入最新網站版本' : '點擊檢查網站是否有新版';
+    if (chip.dataset.versionBound !== '1') {
+      chip.dataset.versionBound = '1';
+      chip.addEventListener('click', () => {
+        if (latestRelease && versionNumber(latestRelease.version) > versionNumber(VERSION)) reloadLatestSite();
+        else checkLatestVersion(true);
+      });
+      chip.addEventListener('keydown', e => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); chip.click(); }
+      });
+    }
+    document.title = `廠商訂單追蹤系統 ${VERSION}`;
     const footer = document.querySelector('footer');
     if (footer) footer.textContent = `Vendor Order Tracking ${VERSION}`;
+  }
+
+  async function checkLatestVersion(force = false) {
+    if (versionCheckPromise) return versionCheckPromise;
+    if (!force && Date.now() - lastVersionCheckAt < 60000) return;
+    lastVersionCheckAt = Date.now();
+    versionCheckPromise = (async () => {
+      try {
+        const url = new URL('./app-version.json', document.baseURI);
+        url.searchParams.set('check', String(Date.now()));
+        const r = await fetch(url.href, {cache:'no-store'});
+        if (!r.ok) return;
+        const data = await r.json();
+        if (versionNumber(data?.version) < 0) return;
+        if (versionNumber(data.version) > versionNumber(VERSION)) {
+          latestRelease = {version:data.version,build:String(data.build || '295-version-sync').slice(0,70)};
+        } else {
+          latestRelease = null;
+        }
+        setVersion();
+      } catch (err) {
+        // Offline or during GitHub Pages propagation: retain truthful loaded-script version.
+      } finally {
+        versionCheckPromise = null;
+      }
+    })();
+    return versionCheckPromise;
   }
 
   function injectStyles() {
@@ -903,6 +963,11 @@
     injectStyles();
     setVersion();
     bindGlobalEvents();
+    checkLatestVersion(true);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') checkLatestVersion();
+    });
+    window.addEventListener('focus', () => checkLatestVersion());
     setTimeout(() => activate(true), 120);
     setTimeout(() => activate(false), 700);
   }
