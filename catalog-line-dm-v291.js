@@ -17,6 +17,17 @@ async function api(path,options){
   return body?JSON.parse(body):null;
 }
 async function rpc(name,body){return api('rpc/'+name,{method:'POST',body:JSON.stringify(body)});}
+// Read all catalog records, not only the first PostgREST page, so every sellable item is searchable.
+async function apiPaged(path){
+  var all=[],pageSize=500;
+  for(var offset=0;offset<=50000;offset+=pageSize){
+    var items=await api(path+'&limit='+pageSize+'&offset='+offset);
+    if(!Array.isArray(items))throw new Error('商品分頁資料讀取失敗');
+    all.push.apply(all,items);
+    if(items.length<pageSize)return all;
+  }
+  throw new Error('商品清單過多，請聯繫管理員');
+}
 function fmt(d){return d?new Date(d).toLocaleString('zh-TW',{timeZone:'Asia/Taipei'}):'—';}
 function price(n){return 'NT$'+Number(n).toLocaleString('zh-TW',{maximumFractionDigits:2});}
 function localTaipei(plusMinutes){
@@ -27,7 +38,6 @@ function localTaipei(plusMinutes){
 function readyProduct(p,at){
   var when=at||Date.now();
   return p.active===true&&p.published===true&&p.archived_at==null&&p.visibility_mode==='all'&&
-    p.line_published_at!=null&&
     (!p.sale_start_at||new Date(p.sale_start_at).getTime()<=when)&&
     (!p.sale_end_at||new Date(p.sale_end_at).getTime()>when);
 }
@@ -37,10 +47,10 @@ function getSelected(){return model.products.filter(function(p){return model.sel
 function setStatus(message,isError){var el=$('catLineStatus');if(!el)return;el.className='cat-line-status'+(isError?' error':'');el.textContent=message||'';}
 async function reload(){
   var [products,groups,jobs,images]=await Promise.all([
-    api('catalog_products?select=id,product_code,name,base_price,active,published,archived_at,visibility_mode,line_published_at,line_announced_at,sale_start_at,sale_end_at&order=line_published_at.desc.nullslast&limit=250'),
+    apiPaged('catalog_products?select=id,product_code,name,base_price,active,published,archived_at,visibility_mode,line_published_at,line_announced_at,sale_start_at,sale_end_at,updated_at&active=eq.true&published=eq.true&archived_at=is.null&visibility_mode=eq.all&order=updated_at.desc,id.desc'),
     api('catalog_line_groups?select=*&order=last_seen_at.desc'),
     api('catalog_line_push_jobs?select=*&order=created_at.desc&limit=30'),
-    api('catalog_product_images?select=product_id,storage_path,sort_order&order=sort_order.asc&limit=1000')
+    apiPaged('catalog_product_images?select=product_id,storage_path,sort_order,id&order=sort_order.asc,id.asc')
   ]);
   model.products=products||[];model.groups=groups||[];model.jobs=jobs||[];model.images=images||[];
   var now=Date.now(),available=new Set(model.products.filter(function(p){return readyProduct(p,now);}).map(function(p){return p.id;}));
@@ -77,26 +87,35 @@ function refreshGroupSelect(){
 }
 function renderProducts(){
   var el=$('catLineProducts');if(!el)return;
-  var when=Date.now();
-  var list=model.products.filter(function(p){return readyProduct(p,when);});
+  var all=model.products.filter(function(p){return readyProduct(p,Date.now());});
+  var search=($('catLineSearch')?.value||'').normalize('NFKC').trim().toLocaleLowerCase('zh-TW');
+  var list=all.filter(function(p){
+    return !search||(String(p.product_code)+' '+p.name).normalize('NFKC').toLocaleLowerCase('zh-TW').includes(search);
+  });
+  var summary=$('catLineResultSummary');
+  if(summary)summary.textContent='目前可販售 '+all.length+' 件｜搜尋符合 '+list.length+' 件';
   el.innerHTML=list.length?list.map(function(p){
     var img=imgPath(p.id);
     return '<label class="cat-line-item"><input type="checkbox" data-line-product="'+esc(p.id)+'" '+
       (model.selected.has(p.id)?'checked':'')+'><div class="cat-line-thumb">'+
       (img?'<img loading="lazy" alt="" src="'+esc(imgUrl(img))+'">':'<span>無照片</span>')+'</div>'+
       '<div class="cat-line-item-info"><strong>'+esc(p.product_code)+'｜'+esc(p.name)+'</strong>'+
-      '<div>'+esc(price(p.base_price))+'｜上架：'+esc(fmt(p.line_published_at))+'</div>'+
-      (p.line_announced_at?'<div class="muted">已曾推播：'+esc(fmt(p.line_announced_at))+'</div>':'')+
-      (!img?'<div class="cat-line-warning">請先為此商品新增照片</div>':'')+
+      '<div>'+esc(price(p.base_price))+'｜目前可販售</div>'+
+      (p.line_announced_at?'<div class="muted">過去已推播：'+esc(fmt(p.line_announced_at))+'（可再次選取）</div>':'')+
+      (!img?'<div class="cat-line-warning">此商品尚無照片，無法合成 DM</div>':'')+
       '</div></label>';
-  }).join(''):'<p class="muted">目前沒有符合條件的「新上架」商品。既有舊商品不會自動推播；新增或重新上架商品後會出現在這裡。</p>';
+  }).join(''):(all.length?
+    '<p class="muted">找不到符合「'+esc(search)+'」的可販售商品，請換一組商品編號或名稱。</p>':
+    '<p class="muted">目前沒有可公開販售的商品。請確認商品已上架、已啟用，且未結單、未設定為指定客戶專屬。</p>');
   el.querySelectorAll('[data-line-product]').forEach(function(input){input.onchange=function(){
-    if(input.checked&&model.selected.size>=6){input.checked=false;setStatus('單張 DM 最多 6 件商品',true);return;}
+    if(input.checked&&model.selected.size>=6){input.checked=false;setStatus('單張 DM 最多 6 件商品，請先取消其他商品',true);return;}
     if(input.checked)model.selected.add(input.dataset.lineProduct);
     else model.selected.delete(input.dataset.lineProduct);
     $('catLineSelectedCount').textContent='已選 '+model.selected.size+' 件（最多 6 件）';
+    var preview=$('catLinePreviewWrap');if(preview)preview.classList.add('hidden');
   };});
   $('catLineSelectedCount').textContent='已選 '+model.selected.size+' 件（最多 6 件）';
+  var clear=$('catLineClearSelected');if(clear)clear.disabled=model.selected.size===0;
 }
 function renderJobs(){
   var el=$('catLineJobHistory');if(!el)return;
@@ -220,7 +239,7 @@ async function preview(){
 async function schedule(){
   var products=getSelected(),group=$('catLineTarget').value,date=$('catLineSchedule').value,
       intro=$('catLineIntro').value.trim();
-  if(!products.length)throw new Error('請先選擇新品');
+  if(!products.length)throw new Error('請先選擇要推播的商品');
   if(!group)throw new Error('請先選擇已啟用的 LINE 群組');
   if(!date)throw new Error('請選擇發送日期與時間');
   var scheduled=new Date(date+':00+08:00');
@@ -229,7 +248,7 @@ async function schedule(){
   if(scheduled.getTime()>Date.now()+90*86400000)throw new Error('最多只能排程未來 90 天');
   if(!products.every(function(p){return readyProduct(p,scheduled.getTime());}))
     throw new Error('選取商品有已結單、未上架或不公開的商品');
-  if(!confirm('確定排程發送 '+products.length+' 件新品至 LINE 群組？\n時間：'+fmt(scheduled.toISOString())+
+  if(!confirm('確定排程發送 '+products.length+' 件商品至 LINE 群組？\n時間：'+fmt(scheduled.toISOString())+
     '\n商品：'+products.map(function(x){return x.product_code;}).join('、')))return false;
   var result=await preview(),uuid=crypto.randomUUID(),owner=session()?.user?.id;
   if(!owner)throw new Error('登入資料已過期');
@@ -260,13 +279,16 @@ async function render(){
   try{
     await reload();
     root.innerHTML='<div class="catalog-block cat-line-manager">'+
-      '<h3>LINE 新品推播</h3><p class="muted">選擇 1～6 件新上架商品，合成一張 DM，並在指定時間發送到私人 LINE 群組。只顯示全客戶可見的已上架新品；不會自動發送舊商品。</p>'+
+      '<h3>LINE 商品推播</h3><p class="muted">可搜尋並勾選所有目前公開販售的商品（包括舊商品），最多 6 件合成一張 DM，指定時間發送至 LINE 群組。不需要先下架再上架；不符合販售條件的商品不會出現。</p>'+
       '<div class="cat-line-setup"><strong>首次啟用：建立「宜羿新品通知」LINE 機器人</strong>'+
       '<p>先至 <a href="https://manager.line.biz/" target="_blank" rel="noopener noreferrer">LINE 官方帳號管理中心</a> 建立帳號並啟用 Messaging API，再到 <a href="https://developers.line.biz/console/" target="_blank" rel="noopener noreferrer">LINE Developers</a> 設定 Webhook 及允許機器人加入私人群組。</p>'+
       '<div class="cat-line-webhook"><code id="catLineWebhookUrl">https://qibeuakrryqjaiwbcorg.supabase.co/functions/v1/catalog-line-webhook</code><button class="btn secondary" type="button" id="catLineCopyWebhook">複製 Webhook</button></div>'+
       '<p class="muted">新機器人的 Channel Secret、Access Token 應安全儲存於 Supabase Edge Function Secrets，不可貼在 GitHub 或商城前端。群組加入後才會出現在下方，並須手動啟用推播。</p></div>'+
       '<h4>1．私人 LINE 群組</h4><div id="catLineGroups"></div>'+
-      '<h4>2．選擇新上架商品 <span id="catLineSelectedCount" class="muted"></span></h4>'+
+      '<h4>2．選擇已上架商品 <span id="catLineSelectedCount" class="muted"></span></h4>'+
+      '<div class="cat-line-searchbar"><input type="search" id="catLineSearch" placeholder="搜尋商品編號或名稱，例如 2514" aria-label="搜尋目前可販售商品" autocomplete="off">'+
+      '<button type="button" class="btn ghost" id="catLineClearSelected">清除已選</button></div>'+
+      '<div class="muted cat-line-result-summary" id="catLineResultSummary"></div>'+
       '<div class="cat-line-products" id="catLineProducts"></div>'+
       '<h4>3．設定推播時間及文字</h4>'+
       '<div class="cat-line-form"><label>發送群組<select id="catLineTarget"></select></label>'+
@@ -286,6 +308,13 @@ async function render(){
     };
     $('catLineSchedule').value=localTaipei(15);
     groupList();refreshGroupSelect();renderProducts();renderJobs();
+    $('catLineSearch').addEventListener('input',renderProducts);
+    $('catLineClearSelected').onclick=function(){
+      model.selected.clear();
+      $('catLinePreviewWrap').classList.add('hidden');
+      renderProducts();
+      setStatus('已清除商品選取');
+    };
     $('catLinePreviewButton').onclick=async function(){
       this.disabled=true;try{await preview();}catch(err){setStatus('預覽失敗：'+err.message,true);}finally{this.disabled=false;}
     };
