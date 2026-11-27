@@ -3,7 +3,7 @@
 var CFG=window.APP_CONFIG||{},BASE=CFG.SUPABASE_URL,KEY=CFG.SUPABASE_PUBLISHABLE_KEY;
 var ORIGIN='https://jacky0530-spec.github.io/vendor-order-tracking/';
 var rootId='catAdminLinePush';
-var model={products:[],groups:[],jobs:[],images:[],selected:new Set(),ready:false};
+var model={products:[],groups:[],jobs:[],images:[],selected:new Set(),ready:false,groupPanelOpen:false,groupFilter:''};
 function $(id){return document.getElementById(id);}
 function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
 function session(){try{return JSON.parse(localStorage.getItem('vendor_order_session')||'null');}catch(e){return null;}}
@@ -58,25 +58,73 @@ async function reload(){
 }
 function groupList(){
   var el=$('catLineGroups');if(!el)return;
-  el.innerHTML=model.groups.length?model.groups.map(function(g){
-    return '<div class="cat-line-group"><div><strong>'+esc(g.group_name)+'</strong>'+
-      '<div class="muted">群組尾碼：'+esc(g.line_group_id.slice(-6))+'｜'+(g.connected?'已連接':'已離開')+
+  var total=model.groups.length;
+  var enabled=model.groups.filter(function(g){return g.active&&g.connected;}).length;
+  var disconnected=model.groups.filter(function(g){return !g.connected;}).length;
+  var summary=$('catLineGroupCounts');
+  if(summary)summary.textContent='共 '+total+' 群｜已啟用 '+enabled+' 群'+(disconnected?'｜已離開 '+disconnected+' 群':'');
+  var keyword=(model.groupFilter||'').normalize('NFKC').trim().toLocaleLowerCase('zh-TW');
+  var list=model.groups.filter(function(g){
+    return !keyword||(String(g.group_name||'')+' '+String(g.line_group_id||'')).normalize('NFKC')
+      .toLocaleLowerCase('zh-TW').includes(keyword);
+  }).sort(function(a,b){
+    var x=(a.active&&a.connected?2:a.connected?1:0);
+    var y=(b.active&&b.connected?2:b.connected?1:0);
+    if(x!==y)return y-x;
+    return new Date(b.last_seen_at||0).getTime()-new Date(a.last_seen_at||0).getTime();
+  });
+  var count=$('catLineGroupFilteredCount');
+  if(count)count.textContent=keyword?'符合 '+list.length+' / '+total+' 群':'顯示 '+list.length+' 群（已啟用優先）';
+  el.innerHTML=list.length?list.map(function(g){
+    var status=!g.connected?'已離開':g.active?'已啟用':'已停用';
+    return '<div class="cat-line-group cat-line-group-compact">'+
+      '<div class="cat-line-group-detail"><strong title="'+esc(g.group_name)+'">'+esc(g.group_name)+'</strong>'+
+      '<div class="muted">'+esc(status)+'｜尾碼 '+esc(g.line_group_id.slice(-6))+
       '｜最後訊息 '+esc(fmt(g.last_seen_at))+'</div></div>'+
       '<button type="button" class="btn '+(g.active?'ghost':'secondary')+
-      '" data-line-group-toggle="'+esc(g.id)+'" '+(!g.connected?'disabled':'')+'>'+
+      '" data-line-group-toggle="'+esc(g.id)+'" '+(!g.connected?'disabled':'')+
+      ' aria-label="'+esc((g.active?'停用':'啟用')+g.group_name+'推播')+'">'+
       (g.active?'停用推播':'啟用推播')+'</button></div>';
-  }).join(''):'<p class="muted">尚未偵測到群組。請先建立「宜羿新品通知」專用 LINE 官方帳號並啟用 Messaging API，邀請機器人加入測試私人群組，再傳送一則訊息觸發登錄。</p>';
+  }).join(''):(total===0?
+    '<p class="muted cat-line-group-empty">尚未偵測到群組。請先建立「宜羿新品通知」LINE 官方帳號並啟用 Messaging API，邀請機器人加入私人群組，再傳送一則訊息觸發登錄。</p>':
+    '<p class="muted cat-line-group-empty">找不到符合搜尋條件的群組。</p>');
   el.querySelectorAll('[data-line-group-toggle]').forEach(function(b){b.onclick=async function(){
     var g=model.groups.find(function(x){return x.id===b.dataset.lineGroupToggle;});
     if(!g)return;
     if(!confirm((g.active?'停用':'啟用')+'「'+g.group_name+'」新品 LINE 推播？'))return;
     b.disabled=true;
     try{
-      await api('catalog_line_groups?id=eq.'+encodeURIComponent(g.id),{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify({active:!g.active,updated_at:new Date().toISOString()})});
-      await reload();groupList();refreshGroupSelect();renderJobs();
+      await api('catalog_line_groups?id=eq.'+encodeURIComponent(g.id),{method:'PATCH',
+        headers:{Prefer:'return=minimal'},
+        body:JSON.stringify({active:!g.active,updated_at:new Date().toISOString()})});
+      await reload();
+      groupList();
+      refreshGroupSelect();
+      renderJobs();
+      setStatus('已'+(!g.active?'啟用':'停用')+'「'+g.group_name+'」的推播');
     }catch(err){setStatus('群組變更失敗：'+err.message,true);}
-    finally{b.disabled=false;}
+    finally{if(b.isConnected)b.disabled=false;}
   };});
+}
+function setupGroupPanel(){
+  var toggle=$('catLineGroupExpand'),panel=$('catLineGroupPanel'),search=$('catLineGroupSearch');
+  if(!toggle||!panel||!search)return;
+  function sync(){
+    panel.classList.toggle('hidden',!model.groupPanelOpen);
+    toggle.setAttribute('aria-expanded',model.groupPanelOpen?'true':'false');
+    toggle.textContent=model.groupPanelOpen?'收合群組管理':'展開群組管理';
+    search.value=model.groupFilter;
+  }
+  toggle.onclick=function(){
+    model.groupPanelOpen=!model.groupPanelOpen;
+    sync();
+    if(model.groupPanelOpen&&model.groups.length>0)search.focus();
+  };
+  search.oninput=function(){
+    model.groupFilter=search.value;
+    groupList();
+  };
+  sync();
 }
 function refreshGroupSelect(){
   var el=$('catLineTarget');if(!el)return;
@@ -284,7 +332,15 @@ async function render(){
       '<p>先至 <a href="https://manager.line.biz/" target="_blank" rel="noopener noreferrer">LINE 官方帳號管理中心</a> 建立帳號並啟用 Messaging API，再到 <a href="https://developers.line.biz/console/" target="_blank" rel="noopener noreferrer">LINE Developers</a> 設定 Webhook 及允許機器人加入私人群組。</p>'+
       '<div class="cat-line-webhook"><code id="catLineWebhookUrl">https://qibeuakrryqjaiwbcorg.supabase.co/functions/v1/catalog-line-webhook</code><button class="btn secondary" type="button" id="catLineCopyWebhook">複製 Webhook</button></div>'+
       '<p class="muted">新機器人的 Channel Secret、Access Token 應安全儲存於 Supabase Edge Function Secrets，不可貼在 GitHub 或商城前端。群組加入後才會出現在下方，並須手動啟用推播。</p></div>'+
-      '<h4>1．私人 LINE 群組</h4><div id="catLineGroups"></div>'+
+      '<h4>1．私人 LINE 群組</h4>'+
+      '<div class="cat-line-group-box">'+
+      '<div class="cat-line-group-bar"><div class="cat-line-group-caption"><strong id="catLineGroupCounts">群組載入中…</strong>'+
+      '<span class="muted">不展開也能在下方直接選擇發送群組</span></div>'+
+      '<button type="button" class="btn secondary" id="catLineGroupExpand" aria-expanded="false" aria-controls="catLineGroupPanel">展開群組管理</button></div>'+
+      '<div id="catLineGroupPanel" class="cat-line-group-panel hidden">'+
+      '<div class="cat-line-group-filters"><input type="search" id="catLineGroupSearch" placeholder="搜尋 LINE 群組名稱或群組編號" aria-label="搜尋私人 LINE 群組" autocomplete="off">'+
+      '<span class="muted" id="catLineGroupFilteredCount"></span></div>'+
+      '<div id="catLineGroups" class="cat-line-group-scroll" role="region" aria-label="LINE 群組管理清單" tabindex="0"></div></div></div>'+
       '<h4>2．選擇已上架商品 <span id="catLineSelectedCount" class="muted"></span></h4>'+
       '<div class="cat-line-searchbar"><input type="search" id="catLineSearch" placeholder="搜尋商品編號或名稱，例如 2514" aria-label="搜尋目前可販售商品" autocomplete="off">'+
       '<button type="button" class="btn ghost" id="catLineClearSelected">清除已選</button></div>'+
@@ -307,7 +363,7 @@ async function render(){
       catch(e){setStatus('自動複製失敗，請手動選取 Webhook 網址',true);}
     };
     $('catLineSchedule').value=localTaipei(15);
-    groupList();refreshGroupSelect();renderProducts();renderJobs();
+    setupGroupPanel();groupList();refreshGroupSelect();renderProducts();renderJobs();
     $('catLineSearch').addEventListener('input',renderProducts);
     $('catLineClearSelected').onclick=function(){
       model.selected.clear();
