@@ -1,6 +1,6 @@
 {
-  "version": "V2.95",
-  "build": "295-version-sync",
+  "version": "V2.96",
+  "build": "296-line-multi-groups",
   "published_at": "2026-11-27",
-  "description": "Sync version badge, document title, footer and detect new builds"
+  "description": "Multi-select LINE groups and atomically fan out shared DM schedule"
 }
